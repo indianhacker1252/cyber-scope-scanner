@@ -27,9 +27,9 @@ const WebVulnerabilities = () => {
       name: "SQL Injection",
       description: "Test for SQL injection vulnerabilities in input fields and parameters",
       icon: Database,
-      status: "completed",
-      progress: 100,
-      findings: 3,
+      status: "pending",
+      progress: 0,
+      findings: 0,
       severity: "high",
       tools: ["SQLMap", "NoSQLMap", "Custom Payloads"]
     },
@@ -38,9 +38,9 @@ const WebVulnerabilities = () => {
       name: "Cross-Site Scripting (XSS)",
       description: "Detect reflected, stored, and DOM-based XSS vulnerabilities",
       icon: Code,
-      status: "running",
-      progress: 65,
-      findings: 8,
+      status: "pending",
+      progress: 0,
+      findings: 0,
       severity: "medium",
       tools: ["XSSHunter", "DOMPurify", "Custom Payloads"]
     },
@@ -60,9 +60,9 @@ const WebVulnerabilities = () => {
       name: "Directory Traversal",
       description: "Check for path traversal vulnerabilities in file operations",
       icon: FileText,
-      status: "completed",
-      progress: 100,
-      findings: 1,
+      status: "pending",
+      progress: 0,
+      findings: 0,
       severity: "high",
       tools: ["DirBuster", "Gobuster", "Custom Wordlists"]
     },
@@ -71,9 +71,9 @@ const WebVulnerabilities = () => {
       name: "File Upload Vulnerabilities",
       description: "Test file upload functionality for security bypass",
       icon: Upload,
-      status: "running",
-      progress: 30,
-      findings: 2,
+      status: "pending",
+      progress: 0,
+      findings: 0,
       severity: "critical",
       tools: ["Upload Scanner", "File Type Bypass", "WebShell Detection"]
     },
@@ -82,9 +82,9 @@ const WebVulnerabilities = () => {
       name: "Broken Authentication",
       description: "Test authentication mechanisms and session management",
       icon: Lock,
-      status: "completed",
-      progress: 100,
-      findings: 5,
+      status: "pending",
+      progress: 0,
+      findings: 0,
       severity: "high",
       tools: ["Hydra", "John the Ripper", "Custom Brute Force"]
     },
@@ -104,9 +104,9 @@ const WebVulnerabilities = () => {
       name: "Clickjacking",
       description: "Test for clickjacking protection using X-Frame-Options",
       icon: Eye,
-      status: "completed",
-      progress: 100,
-      findings: 12,
+      status: "pending",
+      progress: 0,
+      findings: 0,
       severity: "low",
       tools: ["Frame Buster", "CSP Analysis", "Manual Testing"]
     }
@@ -166,10 +166,10 @@ const WebVulnerabilities = () => {
             <TabsContent value="overview" className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { label: "Tests Running", value: "3", color: "text-warning" },
-                  { label: "Critical Findings", value: "2", color: "text-destructive" },
-                  { label: "Completed Tests", value: "4", color: "text-success" },
-                  { label: "Total Findings", value: "31", color: "text-primary" }
+                  { label: "Tests Running", value: "0", color: "text-warning" },
+                  { label: "Critical Findings", value: "0", color: "text-destructive" },
+                  { label: "Completed Tests", value: "0", color: "text-success" },
+                  { label: "Total Findings", value: "0", color: "text-primary" }
                 ].map((stat, index) => (
                   <Card key={index}>
                     <CardContent className="p-4">

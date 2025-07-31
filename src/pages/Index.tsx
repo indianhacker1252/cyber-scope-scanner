@@ -4,6 +4,14 @@ import Sidebar from "@/components/dashboard/Sidebar";
 import DashboardOverview from "@/components/dashboard/DashboardOverview";
 import TargetInput from "@/components/dashboard/TargetInput";
 import WebVulnerabilities from "@/components/dashboard/WebVulnerabilities";
+import Reconnaissance from "@/components/dashboard/Reconnaissance";
+import NetworkScanning from "@/components/dashboard/NetworkScanning";
+import MobileSecurity from "@/components/dashboard/MobileSecurity";
+import CodeAnalysis from "@/components/dashboard/CodeAnalysis";
+import DatabaseTesting from "@/components/dashboard/DatabaseTesting";
+import ExploitTesting from "@/components/dashboard/ExploitTesting";
+import Reports from "@/components/dashboard/Reports";
+import ToolManagement from "@/components/dashboard/ToolManagement";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -17,21 +25,21 @@ const Index = () => {
       case "web-vulns":
         return <WebVulnerabilities />;
       case "reconnaissance":
-        return <div className="p-8 text-center text-muted-foreground">Reconnaissance module coming soon...</div>;
+        return <Reconnaissance />;
       case "network":
-        return <div className="p-8 text-center text-muted-foreground">Network scanning module coming soon...</div>;
+        return <NetworkScanning />;
       case "mobile":
-        return <div className="p-8 text-center text-muted-foreground">Mobile security module coming soon...</div>;
+        return <MobileSecurity />;
       case "code-analysis":
-        return <div className="p-8 text-center text-muted-foreground">Code analysis module coming soon...</div>;
+        return <CodeAnalysis />;
       case "database":
-        return <div className="p-8 text-center text-muted-foreground">Database testing module coming soon...</div>;
+        return <DatabaseTesting />;
       case "exploits":
-        return <div className="p-8 text-center text-muted-foreground">Exploit testing module coming soon...</div>;
+        return <ExploitTesting />;
       case "reports":
-        return <div className="p-8 text-center text-muted-foreground">Reports module coming soon...</div>;
+        return <Reports />;
       case "tools":
-        return <div className="p-8 text-center text-muted-foreground">Tool management module coming soon...</div>;
+        return <ToolManagement />;
       default:
         return <DashboardOverview />;
     }
