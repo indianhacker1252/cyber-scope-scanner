@@ -18,12 +18,27 @@ import {
   Download
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useKaliTools } from "@/hooks/useKaliTools";
 
 const TargetInput = () => {
   const [targetUrl, setTargetUrl] = useState("");
   const [targetNetwork, setTargetNetwork] = useState("");
   const [selectedTests, setSelectedTests] = useState<string[]>([]);
+  const [multipleTargets, setMultipleTargets] = useState("");
+  const [scanIntensity, setScanIntensity] = useState("normal");
+  const [threads, setThreads] = useState("5");
+  const [timeout, setTimeout] = useState("10");
+  const [isScanning, setIsScanning] = useState(false);
   const { toast } = useToast();
+  const { 
+    isKaliEnvironment, 
+    runNetworkScan, 
+    runWebScan, 
+    runSQLInjectionTest,
+    runDirectoryEnum,
+    runSubdomainEnum,
+    runVulnerabilityScan
+  } = useKaliTools();
 
   const vulnerabilityTests = [
     { id: "subdomain-enum", label: "Subdomain Enumeration", category: "reconnaissance" },
@@ -60,8 +75,8 @@ const TargetInput = () => {
     );
   };
 
-  const handleStartScan = () => {
-    if (!targetUrl && !targetNetwork) {
+  const handleStartScan = async () => {
+    if (!targetUrl && !targetNetwork && !multipleTargets) {
       toast({
         title: "Error",
         description: "Please provide at least one target",
@@ -79,10 +94,68 @@ const TargetInput = () => {
       return;
     }
 
-    toast({
-      title: "Scan Started",
-      description: `Initiating ${selectedTests.length} vulnerability tests`,
-    });
+    setIsScanning(true);
+    
+    try {
+      const targets = getTargetList();
+      
+      for (const target of targets) {
+        for (const testId of selectedTests) {
+          await executeTest(testId, target);
+        }
+      }
+      
+      toast({
+        title: "Scan Completed",
+        description: `All ${selectedTests.length} tests completed successfully`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Scan Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const getTargetList = (): string[] => {
+    const targets = [];
+    if (targetUrl) targets.push(targetUrl);
+    if (targetNetwork) targets.push(targetNetwork);
+    if (multipleTargets) {
+      targets.push(...multipleTargets.split('\n').filter(t => t.trim()));
+    }
+    return targets;
+  };
+
+  const executeTest = async (testId: string, target: string) => {
+    switch (testId) {
+      case 'port-scan':
+      case 'service-enum':
+        await runNetworkScan(target, scanIntensity);
+        break;
+      case 'subdomain-enum':
+        await runSubdomainEnum(target.replace(/^https?:\/\//, ''));
+        break;
+      case 'sql-injection':
+        await runSQLInjectionTest(target);
+        break;
+      case 'directory-traversal':
+        await runDirectoryEnum(target);
+        break;
+      case 'xss-testing':
+      case 'csrf':
+      case 'file-upload':
+        await runWebScan(target);
+        break;
+      case 'code-review':
+        await runVulnerabilityScan(target);
+        break;
+      default:
+        console.log(`Test ${testId} not implemented yet`);
+    }
   };
 
   const selectAllByCategory = (category: string) => {
@@ -146,6 +219,8 @@ const TargetInput = () => {
                   id="targets"
                   placeholder="Enter multiple targets, one per line&#10;example.com&#10;test.example.com&#10;192.168.1.1"
                   className="min-h-32"
+                  value={multipleTargets}
+                  onChange={(e) => setMultipleTargets(e.target.value)}
                 />
               </div>
             </TabsContent>
@@ -265,12 +340,12 @@ const TargetInput = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="scan-type">Scan Intensity</Label>
-              <Select>
+              <Select value={scanIntensity} onValueChange={setScanIntensity}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select intensity" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="light">Light (Passive)</SelectItem>
+                  <SelectItem value="basic">Light (Passive)</SelectItem>
                   <SelectItem value="normal">Normal</SelectItem>
                   <SelectItem value="aggressive">Aggressive</SelectItem>
                   <SelectItem value="stealth">Stealth</SelectItem>
@@ -279,7 +354,7 @@ const TargetInput = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="threads">Concurrent Threads</Label>
-              <Select>
+              <Select value={threads} onValueChange={setThreads}>
                 <SelectTrigger>
                   <SelectValue placeholder="Threads" />
                 </SelectTrigger>
@@ -293,7 +368,7 @@ const TargetInput = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="timeout">Request Timeout</Label>
-              <Select>
+              <Select value={timeout} onValueChange={setTimeout}>
                 <SelectTrigger>
                   <SelectValue placeholder="Timeout" />
                 </SelectTrigger>
@@ -316,9 +391,9 @@ const TargetInput = () => {
                 <Download className="h-4 w-4 mr-2" />
                 Save Config
               </Button>
-              <Button onClick={handleStartScan}>
+              <Button onClick={handleStartScan} disabled={isScanning}>
                 <Play className="h-4 w-4 mr-2" />
-                Start Scan
+                {isScanning ? 'Scanning...' : 'Start Scan'}
               </Button>
             </div>
           </div>
