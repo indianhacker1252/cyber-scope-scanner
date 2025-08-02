@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import KaliToolsManager, { ScanResult, ToolConfig } from '@/utils/kaliTools';
+import KaliToolsManager, { ScanResult, ToolConfig, AutomatedScanConfig } from '@/utils/kaliTools';
 
 export const useKaliTools = () => {
   const [isKaliEnvironment, setIsKaliEnvironment] = useState(false);
@@ -459,6 +459,60 @@ export const useKaliTools = () => {
     });
   }, [toast]);
 
+  // Run automated comprehensive scan
+  const runAutomatedScan = useCallback(async (target: string, scanTypes?: string[]) => {
+    const config: AutomatedScanConfig = {
+      target,
+      scanTypes: scanTypes || [],
+      onProgress: (progress: number, currentTool: string) => {
+        toast({
+          title: "Automated Scan Progress",
+          description: `${progress}% - Running ${currentTool}`,
+        });
+      },
+      onToolComplete: (result: ScanResult) => {
+        setActiveSessions(prev => {
+          const existingIndex = prev.findIndex(s => s.id === result.id);
+          if (existingIndex >= 0) {
+            const updated = [...prev];
+            updated[existingIndex] = result;
+            return updated;
+          }
+          return [...prev, result];
+        });
+
+        toast({
+          title: `${result.tool.toUpperCase()} ${result.status === 'completed' ? 'Completed' : 'Failed'}`,
+          description: `Scan ${result.status} for ${result.target}`,
+          variant: result.status === 'failed' ? 'destructive' : 'default'
+        });
+      }
+    };
+
+    try {
+      toast({
+        title: "Automated Scan Started",
+        description: `Running comprehensive security assessment on ${target}`,
+      });
+
+      const results = await toolsManager.runAutomatedScan(config);
+      
+      toast({
+        title: "Automated Scan Completed",
+        description: `Assessment completed for ${target}. Check the results below.`,
+      });
+
+      return results;
+    } catch (error: any) {
+      toast({
+        title: "Automated Scan Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+      throw error;
+    }
+  }, [toast]);
+
   return {
     isKaliEnvironment,
     installedTools,
@@ -470,6 +524,7 @@ export const useKaliTools = () => {
     runDirectoryEnum,
     runSubdomainEnum,
     runVulnerabilityScan,
+    runAutomatedScan,
     generateReport,
     clearSessions,
     stopAllScans

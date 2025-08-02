@@ -15,7 +15,8 @@ import {
   Target,
   Play,
   Upload,
-  Download
+  Download,
+  Zap
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useKaliTools } from "@/hooks/useKaliTools";
@@ -37,7 +38,8 @@ const TargetInput = () => {
     runSQLInjectionTest,
     runDirectoryEnum,
     runSubdomainEnum,
-    runVulnerabilityScan
+    runVulnerabilityScan,
+    runAutomatedScan
   } = useKaliTools();
 
   const vulnerabilityTests = [
@@ -167,6 +169,41 @@ const TargetInput = () => {
       ...prev.filter(id => !categoryTests.includes(id)),
       ...categoryTests
     ]);
+  };
+
+  const handleAutomatedScan = async () => {
+    if (!targetUrl && !targetNetwork && !multipleTargets) {
+      toast({
+        title: "Error",
+        description: "Please provide at least one target",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsScanning(true);
+    
+    try {
+      const targets = getTargetList();
+      
+      for (const target of targets) {
+        // Run comprehensive automated scan using all available tools
+        await runAutomatedScan(target);
+      }
+      
+      toast({
+        title: "Automated Scan Completed",
+        description: `Comprehensive security assessment completed for all targets`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Automated Scan Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   return (
@@ -384,16 +421,20 @@ const TargetInput = () => {
 
           <div className="flex justify-between items-center pt-4">
             <div className="text-sm text-muted-foreground">
-              {selectedTests.length} tests selected
+              {selectedTests.length} tests selected • Automated scan uses all tools
             </div>
             <div className="space-x-2">
               <Button variant="outline">
                 <Download className="h-4 w-4 mr-2" />
                 Save Config
               </Button>
+              <Button onClick={handleAutomatedScan} disabled={isScanning} variant="secondary">
+                <Zap className="h-4 w-4 mr-2" />
+                {isScanning ? 'Running Auto Scan...' : 'Auto Scan'}
+              </Button>
               <Button onClick={handleStartScan} disabled={isScanning}>
                 <Play className="h-4 w-4 mr-2" />
-                {isScanning ? 'Scanning...' : 'Start Scan'}
+                {isScanning ? 'Scanning...' : 'Manual Scan'}
               </Button>
             </div>
           </div>
