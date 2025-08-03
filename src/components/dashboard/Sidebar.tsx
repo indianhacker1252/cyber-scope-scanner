@@ -11,7 +11,8 @@ import {
   Bug,
   AlertTriangle,
   Activity,
-  Settings
+  Settings,
+  Terminal
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,8 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
   const sections = [
     { id: "dashboard", label: "Dashboard", icon: Activity },
     { id: "target", label: "Target Input", icon: Target },
+    { id: "advanced-scanning", label: "Advanced Scanning", icon: Terminal },
+    { id: "scan-results", label: "Scan Results", icon: FileText },
     { id: "reconnaissance", label: "Reconnaissance", icon: Search },
     { id: "web-vulns", label: "Web Vulnerabilities", icon: Globe },
     { id: "network", label: "Network Scanning", icon: Network },
@@ -32,7 +35,7 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
     { id: "code-analysis", label: "Code Analysis", icon: Code },
     { id: "database", label: "Database Testing", icon: Database },
     { id: "exploits", label: "Exploit Testing", icon: Bug },
-    { id: "reports", label: "Reports", icon: FileText },
+    { id: "reports", label: "AI Reports", icon: AlertTriangle },
     { id: "tools", label: "Tool Management", icon: Settings },
   ];
 

@@ -461,9 +461,30 @@ export const useKaliTools = () => {
 
   // Run automated comprehensive scan
   const runAutomatedScan = useCallback(async (target: string, scanTypes?: string[]) => {
+    // Pre-create sessions for all tools that will run
+    const toolsToRun = scanTypes && scanTypes.length > 0 ? scanTypes : ['nmap', 'whatweb', 'wafw00f', 'gobuster', 'nikto', 'nuclei', 'sqlmap'];
+    const preSessions: ScanResult[] = [];
+    
+    toolsToRun.forEach(tool => {
+      const sessionId = `${tool}-auto-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      preSessions.push({
+        id: sessionId,
+        tool,
+        target,
+        status: 'running',
+        progress: 0,
+        findings: [],
+        output: '',
+        startTime: new Date()
+      });
+    });
+
+    // Add all pre-sessions to state immediately
+    setActiveSessions(prev => [...prev, ...preSessions]);
+
     const config: AutomatedScanConfig = {
       target,
-      scanTypes: scanTypes || [],
+      scanTypes: toolsToRun,
       onProgress: (progress: number, currentTool: string) => {
         toast({
           title: "Automated Scan Progress",
@@ -472,18 +493,25 @@ export const useKaliTools = () => {
       },
       onToolComplete: (result: ScanResult) => {
         setActiveSessions(prev => {
-          const existingIndex = prev.findIndex(s => s.id === result.id);
+          const existingIndex = prev.findIndex(s => s.tool === result.tool && s.target === result.target && s.status === 'running');
           if (existingIndex >= 0) {
             const updated = [...prev];
-            updated[existingIndex] = result;
+            updated[existingIndex] = {
+              ...updated[existingIndex],
+              status: result.status,
+              progress: 100,
+              output: result.output,
+              endTime: result.endTime,
+              findings: result.findings
+            };
             return updated;
           }
-          return [...prev, result];
+          return prev;
         });
 
         toast({
           title: `${result.tool.toUpperCase()} ${result.status === 'completed' ? 'Completed' : 'Failed'}`,
-          description: `Scan ${result.status} for ${result.target}`,
+          description: `Found ${result.findings.length} findings for ${result.target}`,
           variant: result.status === 'failed' ? 'destructive' : 'default'
         });
       }
@@ -492,14 +520,14 @@ export const useKaliTools = () => {
     try {
       toast({
         title: "Automated Scan Started",
-        description: `Running comprehensive security assessment on ${target}`,
+        description: `Running ${toolsToRun.length} security tools on ${target}`,
       });
 
       const results = await toolsManager.runAutomatedScan(config);
       
       toast({
         title: "Automated Scan Completed",
-        description: `Assessment completed for ${target}. Check the results below.`,
+        description: `All tools completed. Found ${results.reduce((sum, r) => sum + r.findings.length, 0)} total findings.`,
       });
 
       return results;
@@ -511,6 +539,20 @@ export const useKaliTools = () => {
       });
       throw error;
     }
+  }, [toast]);
+
+  // Stop a specific scan
+  const stopScan = useCallback((scanId: string) => {
+    setActiveSessions(prev => prev.map(session => 
+      session.id === scanId && session.status === 'running'
+        ? { ...session, status: 'failed', output: 'Scan stopped by user', endTime: new Date() }
+        : session
+    ));
+    
+    toast({
+      title: "Scan Stopped",
+      description: "The selected scan has been terminated"
+    });
   }, [toast]);
 
   return {
@@ -527,7 +569,8 @@ export const useKaliTools = () => {
     runAutomatedScan,
     generateReport,
     clearSessions,
-    stopAllScans
+    stopAllScans,
+    stopScan
   };
 };
 

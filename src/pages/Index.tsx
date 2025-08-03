@@ -3,6 +3,8 @@ import Header from "@/components/dashboard/Header";
 import Sidebar from "@/components/dashboard/Sidebar";
 import DashboardOverview from "@/components/dashboard/DashboardOverview";
 import TargetInput from "@/components/dashboard/TargetInput";
+import AdvancedScanning from "@/components/dashboard/AdvancedScanning";
+import ScanResults from "@/components/dashboard/ScanResults";
 import WebVulnerabilities from "@/components/dashboard/WebVulnerabilities";
 import Reconnaissance from "@/components/dashboard/Reconnaissance";
 import NetworkScanning from "@/components/dashboard/NetworkScanning";
@@ -22,6 +24,10 @@ const Index = () => {
         return <DashboardOverview />;
       case "target":
         return <TargetInput />;
+      case "advanced-scanning":
+        return <AdvancedScanning />;
+      case "scan-results":
+        return <ScanResults />;
       case "web-vulns":
         return <WebVulnerabilities />;
       case "reconnaissance":
