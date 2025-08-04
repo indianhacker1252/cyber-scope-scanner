@@ -1,8 +1,17 @@
+import { useState } from "react";
 import { Shield, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import ProfileDialog from "./ProfileDialog";
+import SettingsDialog from "./SettingsDialog";
 
 const Header = () => {
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   return (
+    <>
+      <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     <header className="bg-card border-b border-border px-6 py-4 flex items-center justify-between">
       <div className="flex items-center space-x-4">
         <div className="flex items-center space-x-2">
@@ -17,14 +26,15 @@ const Header = () => {
       </div>
       
       <div className="flex items-center space-x-4">
-        <Button variant="ghost" size="sm">
+        <Button variant="ghost" size="sm" onClick={() => setSettingsOpen(true)}>
           <Settings className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="sm">
+        <Button variant="ghost" size="sm" onClick={() => setProfileOpen(true)}>
           <User className="h-4 w-4" />
         </Button>
       </div>
-    </header>
+      </header>
+    </>
   );
 };
 

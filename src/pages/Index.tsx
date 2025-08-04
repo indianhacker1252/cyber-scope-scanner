@@ -14,6 +14,7 @@ import DatabaseTesting from "@/components/dashboard/DatabaseTesting";
 import ExploitTesting from "@/components/dashboard/ExploitTesting";
 import Reports from "@/components/dashboard/Reports";
 import ToolManagement from "@/components/dashboard/ToolManagement";
+import PentestGPT from "@/components/dashboard/PentestGPT";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -36,6 +37,8 @@ const Index = () => {
         return <NetworkScanning />;
       case "mobile":
         return <MobileSecurity />;
+      case "pentestgpt":
+        return <PentestGPT />;
       case "code-analysis":
         return <CodeAnalysis />;
       case "database":

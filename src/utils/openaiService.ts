@@ -35,6 +35,10 @@ class OpenAIService {
     return !!this.apiKey;
   }
 
+  getClient() {
+    return this.client;
+  }
+
   clearApiKey() {
     this.apiKey = null;
     localStorage.removeItem('openai_api_key');

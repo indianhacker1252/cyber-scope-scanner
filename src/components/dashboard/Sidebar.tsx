@@ -12,7 +12,8 @@ import {
   AlertTriangle,
   Activity,
   Settings,
-  Terminal
+  Terminal,
+  Brain
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,7 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
     { id: "web-vulns", label: "Web Vulnerabilities", icon: Globe },
     { id: "network", label: "Network Scanning", icon: Network },
     { id: "mobile", label: "Mobile Security", icon: Smartphone },
+    { id: "pentestgpt", label: "PentestGPT", icon: Brain },
     { id: "code-analysis", label: "Code Analysis", icon: Code },
     { id: "database", label: "Database Testing", icon: Database },
     { id: "exploits", label: "Exploit Testing", icon: Bug },
