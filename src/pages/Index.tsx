@@ -14,6 +14,8 @@ import DatabaseTesting from "@/components/dashboard/DatabaseTesting";
 import ExploitTesting from "@/components/dashboard/ExploitTesting";
 import Reports from "@/components/dashboard/Reports";
 import ToolManagement from "@/components/dashboard/ToolManagement";
+import AgentManagement from "@/components/dashboard/AgentManagement";
+import VAPTReports from "@/components/dashboard/VAPTReports";
 import PentestGPT from "@/components/dashboard/PentestGPT";
 
 const Index = () => {
@@ -45,6 +47,10 @@ const Index = () => {
         return <DatabaseTesting />;
       case "exploits":
         return <ExploitTesting />;
+      case "agent-management":
+        return <AgentManagement />;
+      case "vapt-reports":
+        return <VAPTReports />;
       case "reports":
         return <Reports />;
       case "tools":

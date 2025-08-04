@@ -24,7 +24,7 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
-  const sections = [
+const sections = [
     { id: "dashboard", label: "Dashboard", icon: Activity },
     { id: "target", label: "Target Input", icon: Target },
     { id: "advanced-scanning", label: "Advanced Scanning", icon: Terminal },
@@ -37,6 +37,8 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
     { id: "code-analysis", label: "Code Analysis", icon: Code },
     { id: "database", label: "Database Testing", icon: Database },
     { id: "exploits", label: "Exploit Testing", icon: Bug },
+    { id: "agent-management", label: "Agent Management", icon: Shield },
+    { id: "vapt-reports", label: "VAPT Reports", icon: FileText },
     { id: "reports", label: "AI Reports", icon: AlertTriangle },
     { id: "tools", label: "Tool Management", icon: Settings },
   ];
