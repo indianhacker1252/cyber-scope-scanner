@@ -215,14 +215,18 @@ const DashboardOverview = () => {
               )}
               {vulnerabilityTypes.length > 0 && (
                 <div className="pt-4 border-t">
-                  <Button size="sm" variant="outline" onClick={() => {
-                    const report = generateReport();
-                    const blob = new Blob([report], { type: 'text/markdown' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `security-report-${new Date().toISOString().split('T')[0]}.md`;
-                    a.click();
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    try {
+                      const report = await generateReport();
+                      const blob = new Blob([report], { type: 'text/markdown' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `security-report-${new Date().toISOString().split('T')[0]}.md`;
+                      a.click();
+                    } catch (error) {
+                      console.error('Failed to generate report:', error);
+                    }
                   }}>
                     <Eye className="h-4 w-4 mr-1" />
                     Generate Report

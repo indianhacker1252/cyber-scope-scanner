@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import KaliToolsManager, { ScanResult, ToolConfig, AutomatedScanConfig } from '@/utils/kaliTools';
+import { RealKaliToolsManager } from '@/utils/realKaliTools';
+import { ScanResult, ToolConfig, AutomatedScanConfig } from '@/utils/kaliTools';
 
 export const useKaliTools = () => {
   const [isKaliEnvironment, setIsKaliEnvironment] = useState(false);
@@ -9,7 +10,7 @@ export const useKaliTools = () => {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  const toolsManager = KaliToolsManager.getInstance();
+  const toolsManager = RealKaliToolsManager.getInstance();
 
   // Check if running in Kali Linux
   useEffect(() => {
@@ -434,9 +435,9 @@ export const useKaliTools = () => {
   }, [toast]);
 
   // Generate comprehensive report
-  const generateReport = useCallback(() => {
+  const generateReport = useCallback(async () => {
     const completedSessions = activeSessions.filter(s => s.status === 'completed');
-    return toolsManager.generateReport(completedSessions);
+    return await toolsManager.generateReport(completedSessions);
   }, [activeSessions]);
 
   // Clear session history
@@ -523,14 +524,14 @@ export const useKaliTools = () => {
         description: `Running ${toolsToRun.length} security tools on ${target}`,
       });
 
-      const results = await toolsManager.runAutomatedScan(config);
+      await toolsManager.runAutomatedScan(config);
       
       toast({
         title: "Automated Scan Completed",
-        description: `All tools completed. Found ${results.reduce((sum, r) => sum + r.findings.length, 0)} total findings.`,
+        description: `All tools completed for ${target}`,
       });
 
-      return results;
+      return activeSessions;
     } catch (error: any) {
       toast({
         title: "Automated Scan Failed",

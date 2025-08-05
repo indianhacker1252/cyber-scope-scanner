@@ -57,14 +57,18 @@ const ScanResults = () => {
     }
   };
 
-  const exportResults = () => {
-    const report = generateReport();
-    const blob = new Blob([report], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `security-report-${new Date().toISOString().split('T')[0]}.md`;
-    a.click();
+  const exportResults = async () => {
+    try {
+      const report = await generateReport();
+      const blob = new Blob([report], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `security-report-${new Date().toISOString().split('T')[0]}.md`;
+      a.click();
+    } catch (error) {
+      console.error('Failed to generate report:', error);
+    }
   };
 
   return (
@@ -340,7 +344,7 @@ const ScanResults = () => {
                     <div className="mt-6">
                       <p className="text-sm font-medium mb-2">Report Preview</p>
                       <Textarea
-                        value={generateReport().substring(0, 500) + '...'}
+                        value="Report preview will be generated when you click generate..."
                         readOnly
                         className="min-h-32 font-mono text-xs"
                       />

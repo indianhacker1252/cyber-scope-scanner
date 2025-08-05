@@ -4,7 +4,7 @@ import Sidebar from "@/components/dashboard/Sidebar";
 import DashboardOverview from "@/components/dashboard/DashboardOverview";
 import TargetInput from "@/components/dashboard/TargetInput";
 import AdvancedScanning from "@/components/dashboard/AdvancedScanning";
-import ScanResults from "@/components/dashboard/ScanResults";
+import EnhancedScanResults from "@/components/dashboard/EnhancedScanResults";
 import WebVulnerabilities from "@/components/dashboard/WebVulnerabilities";
 import Reconnaissance from "@/components/dashboard/Reconnaissance";
 import NetworkScanning from "@/components/dashboard/NetworkScanning";
@@ -30,7 +30,7 @@ const Index = () => {
       case "advanced-scanning":
         return <AdvancedScanning />;
       case "scan-results":
-        return <ScanResults />;
+        return <EnhancedScanResults />;
       case "web-vulns":
         return <WebVulnerabilities />;
       case "reconnaissance":
