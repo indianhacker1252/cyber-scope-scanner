@@ -190,6 +190,23 @@ const ProfileDialog = ({ open, onOpenChange }: ProfileDialogProps) => {
                   </Button>
                 </div>
               )}
+              
+              <div className="pt-4 border-t">
+                <Button 
+                  variant="destructive" 
+                  onClick={() => {
+                    localStorage.removeItem('user_profile');
+                    localStorage.removeItem('scan_results');
+                    localStorage.removeItem('scan_sessions');
+                    toast({
+                      title: "Data Cleared",
+                      description: "All scan data and findings have been cleared",
+                    });
+                  }}
+                >
+                  Clear All Data
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>

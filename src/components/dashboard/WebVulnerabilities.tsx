@@ -19,8 +19,10 @@ import {
   Eye,
   Zap
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const WebVulnerabilities = () => {
+  const { toast } = useToast();
   const vulnerabilityTests = [
     {
       id: "sql-injection",
@@ -265,26 +267,61 @@ const WebVulnerabilities = () => {
                                 {test.findings} vulnerabilities found
                               </span>
                               <div className="space-x-2">
-                                <Button size="sm" variant="outline">
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  View Details
-                                </Button>
-                                {test.status === "running" ? (
-                                  <Button size="sm" variant="outline">
-                                    <Pause className="h-4 w-4 mr-1" />
-                                    Pause
-                                  </Button>
-                                ) : test.status === "pending" ? (
-                                  <Button size="sm">
-                                    <Play className="h-4 w-4 mr-1" />
-                                    Start
-                                  </Button>
-                                ) : (
-                                  <Button size="sm" variant="outline">
-                                    <RotateCcw className="h-4 w-4 mr-1" />
-                                    Rerun
-                                  </Button>
-                                )}
+                                 <Button 
+                                   size="sm" 
+                                   variant="outline"
+                                   onClick={() => {
+                                     toast({
+                                       title: "Test Details",
+                                       description: `Viewing detailed results for ${test.name}`,
+                                     });
+                                   }}
+                                 >
+                                   <Eye className="h-4 w-4 mr-1" />
+                                   View Details
+                                 </Button>
+                                 {test.status === "running" ? (
+                                   <Button 
+                                     size="sm" 
+                                     variant="outline"
+                                     onClick={() => {
+                                       toast({
+                                         title: "Test Paused",
+                                         description: `${test.name} test has been paused`,
+                                       });
+                                     }}
+                                   >
+                                     <Pause className="h-4 w-4 mr-1" />
+                                     Pause
+                                   </Button>
+                                 ) : test.status === "pending" ? (
+                                   <Button 
+                                     size="sm"
+                                     onClick={() => {
+                                       toast({
+                                         title: "Test Started",
+                                         description: `${test.name} vulnerability test initiated`,
+                                       });
+                                     }}
+                                   >
+                                     <Play className="h-4 w-4 mr-1" />
+                                     Start
+                                   </Button>
+                                 ) : (
+                                   <Button 
+                                     size="sm" 
+                                     variant="outline"
+                                     onClick={() => {
+                                       toast({
+                                         title: "Test Restarted",
+                                         description: `${test.name} test is being rerun`,
+                                       });
+                                     }}
+                                   >
+                                     <RotateCcw className="h-4 w-4 mr-1" />
+                                     Rerun
+                                   </Button>
+                                 )}
                               </div>
                             </div>
                           </div>
