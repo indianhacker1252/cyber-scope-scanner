@@ -13,7 +13,11 @@ import {
   Activity,
   Settings,
   Terminal,
-  Brain
+  Brain,
+  Wifi,
+  EyeOff,
+  Download,
+  GitBranch
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -33,10 +37,14 @@ const sections = [
     { id: "web-vulns", label: "Web Vulnerabilities", icon: Globe },
     { id: "network", label: "Network Scanning", icon: Network },
     { id: "mobile", label: "Mobile Security", icon: Smartphone },
+    { id: "iot-security", label: "IoT Security", icon: Wifi },
     { id: "pentestgpt", label: "PentestGPT", icon: Brain },
     { id: "code-analysis", label: "Code Analysis", icon: Code },
     { id: "database", label: "Database Testing", icon: Database },
     { id: "exploits", label: "Exploit Testing", icon: Bug },
+    { id: "asset-exclusion", label: "Asset Exclusion", icon: EyeOff },
+    { id: "agent-installer", label: "Agent Installer", icon: Download },
+    { id: "git-repository", label: "Git Repository", icon: GitBranch },
     { id: "agent-management", label: "Agent Management", icon: Shield },
     { id: "vapt-reports", label: "VAPT Reports", icon: FileText },
     { id: "reports", label: "AI Reports", icon: AlertTriangle },

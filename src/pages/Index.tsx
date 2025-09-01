@@ -9,9 +9,13 @@ import WebVulnerabilities from "@/components/dashboard/WebVulnerabilities";
 import Reconnaissance from "@/components/dashboard/Reconnaissance";
 import NetworkScanning from "@/components/dashboard/NetworkScanning";
 import MobileSecurity from "@/components/dashboard/MobileSecurity";
+import IoTSecurity from "@/components/dashboard/IoTSecurity";
 import CodeAnalysis from "@/components/dashboard/CodeAnalysis";
 import DatabaseTesting from "@/components/dashboard/DatabaseTesting";
 import ExploitTesting from "@/components/dashboard/ExploitTesting";
+import AssetExclusion from "@/components/dashboard/AssetExclusion";
+import AgentInstaller from "@/components/dashboard/AgentInstaller";
+import GitRepository from "@/components/dashboard/GitRepository";
 import Reports from "@/components/dashboard/Reports";
 import ToolManagement from "@/components/dashboard/ToolManagement";
 import AgentManagement from "@/components/dashboard/AgentManagement";
@@ -39,6 +43,8 @@ const Index = () => {
         return <NetworkScanning />;
       case "mobile":
         return <MobileSecurity />;
+      case "iot-security":
+        return <IoTSecurity />;
       case "pentestgpt":
         return <PentestGPT />;
       case "code-analysis":
@@ -47,6 +53,12 @@ const Index = () => {
         return <DatabaseTesting />;
       case "exploits":
         return <ExploitTesting />;
+      case "asset-exclusion":
+        return <AssetExclusion />;
+      case "agent-installer":
+        return <AgentInstaller />;
+      case "git-repository":
+        return <GitRepository />;
       case "agent-management":
         return <AgentManagement />;
       case "vapt-reports":
