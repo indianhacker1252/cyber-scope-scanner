@@ -1,5 +1,6 @@
 // Real Kali Linux Tools Manager - Replaces the mocked version
 import { ScanResult, ToolConfig, AutomatedScanConfig } from './kaliTools';
+import { API_CONFIG, DEMO_OUTPUTS } from '@/config/apiConfig';
 
 interface StreamingCallback {
   onOutput?: (data: string) => void;
@@ -23,10 +24,11 @@ export class RealKaliToolsManager {
   // Check if we're actually in Kali Linux environment
   async isKaliLinux(): Promise<boolean> {
     try {
-      const response = await fetch('/api/check-kali');
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CHECK_KALI}`);
       const result = await response.json();
       return result.isKali;
     } catch {
+      console.warn('Backend not available - running in demo mode');
       return false;
     }
   }
