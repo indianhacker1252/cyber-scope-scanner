@@ -374,73 +374,83 @@ export class RealKaliToolsManager {
     }
   }
 
-  // Run automated scan sequence
+  // Run automated scan sequence (parallel, full toolset)
   async runAutomatedScan(config: AutomatedScanConfig): Promise<void> {
-    const { target, scanTypes = ['nmap', 'nikto', 'nuclei', 'whatweb'], onProgress, onToolComplete } = config;
-    
-    let completedTools = 0;
+    const {
+      target,
+      scanTypes = ['nmap', 'whatweb', 'nikto', 'nuclei', 'gobuster', 'sqlmap', 'amass', 'sublist3r'],
+      onProgress,
+      onToolComplete,
+    } = config;
+
     const totalTools = scanTypes.length;
+    let completedTools = 0;
 
-    for (const toolType of scanTypes) {
-      try {
-        let result: string;
-        
-        switch (toolType) {
-          case 'nmap':
-            result = await this.runNmapScan(target, 'comprehensive');
-            break;
-          case 'nikto':
-            result = await this.runNiktoScan(target);
-            break;
-          case 'nuclei':
-            result = await this.runNucleiScan(target);
-            break;
-          case 'whatweb':
-            result = await this.runWhatWebScan(target);
-            break;
-          case 'gobuster':
-            result = await this.runGobusterScan(target);
-            break;
-          case 'amass':
-            result = await this.runAmassEnum(target);
-            break;
-          case 'sublist3r':
-            result = await this.runSublist3rScan(target);
-            break;
-          default:
-            continue;
+    // Helper: strip protocol/path for domain-focused tools
+    const toDomain = (t: string) => t.replace(/^https?:\/\//, '').split('/')[0];
+
+    const runners = scanTypes.map((toolType) => {
+      const startedAt = new Date();
+      switch (toolType) {
+        case 'nmap':
+          return this.runNmapScan(target, 'comprehensive')
+            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
+            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
+        case 'nikto':
+          return this.runNiktoScan(target)
+            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
+            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
+        case 'nuclei':
+          return this.runNucleiScan(target)
+            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
+            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
+        case 'whatweb':
+          return this.runWhatWebScan(target)
+            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
+            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
+        case 'gobuster':
+          return this.runGobusterScan(target)
+            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
+            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
+        case 'sqlmap':
+          return this.runSQLMapScan(target)
+            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
+            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
+        case 'amass': {
+          const domain = toDomain(target);
+          return this.runAmassEnum(domain)
+            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
+            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
         }
+        case 'sublist3r': {
+          const domain = toDomain(target);
+          return this.runSublist3rScan(domain)
+            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
+            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
+        }
+        default:
+          return Promise.resolve({ toolType, status: 'failed' as const, output: 'Unsupported tool', startTime: startedAt });
+      }
+    });
 
+    await Promise.all(
+      runners.map(async (p) => {
+        const r = await p;
         completedTools++;
         const progress = (completedTools / totalTools) * 100;
-        
-        onProgress?.(progress, toolType);
+        onProgress?.(progress, r.toolType);
         onToolComplete?.({
-          id: `${toolType}-${Date.now()}`,
-          tool: toolType,
+          id: `${r.toolType}-${Date.now()}`,
+          tool: r.toolType,
           target,
-          status: 'completed',
-          progress: 100,
+          status: r.status,
+          progress: r.status === 'completed' ? 100 : 0,
           findings: [],
-          output: result,
-          startTime: new Date(),
-          endTime: new Date()
+          output: r.output,
+          startTime: r.startTime,
+          endTime: new Date(),
         });
-        
-      } catch (error: any) {
-        console.error(`${toolType} scan failed:`, error.message);
-        onToolComplete?.({
-          id: `${toolType}-${Date.now()}`,
-          tool: toolType,
-          target,
-          status: 'failed',
-          progress: 0,
-          findings: [],
-          output: `Error: ${error.message}`,
-          startTime: new Date(),
-          endTime: new Date()
-        });
-      }
-    }
+      })
+    );
   }
 }

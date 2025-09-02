@@ -496,7 +496,7 @@ export const useKaliTools = () => {
   // Run automated comprehensive scan
   const runAutomatedScan = useCallback(async (target: string, scanTypes?: string[]) => {
     // Pre-create sessions for all tools that will run
-    const toolsToRun = scanTypes && scanTypes.length > 0 ? scanTypes : ['nmap', 'whatweb', 'wafw00f', 'gobuster', 'nikto', 'nuclei', 'sqlmap'];
+    const toolsToRun = scanTypes && scanTypes.length > 0 ? scanTypes : ['nmap', 'whatweb', 'gobuster', 'nikto', 'nuclei', 'sqlmap', 'amass', 'sublist3r'];
     const preSessions: ScanResult[] = [];
     
     toolsToRun.forEach(tool => {
