@@ -36,7 +36,7 @@ export class RealKaliToolsManager {
   // Get list of installed tools
   async getInstalledTools(): Promise<ToolConfig[]> {
     try {
-      const response = await fetch('/api/tools/installed');
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.TOOLS_INSTALLED}`);
       return await response.json();
     } catch {
       return [];
@@ -54,7 +54,7 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
-      const response = await fetch('/api/scan/nmap', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_NMAP}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target, scanType, sessionId }),
@@ -66,7 +66,7 @@ export class RealKaliToolsManager {
       }
 
       // Setup WebSocket for real-time output streaming
-      const ws = new WebSocket(`ws://localhost:8080/stream/${sessionId}`);
+      const ws = new WebSocket(`${API_CONFIG.WS_URL}/stream/${sessionId}`);
       this.wsConnections.set(sessionId, ws);
 
       let fullOutput = '';
@@ -115,7 +115,7 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
-      const response = await fetch('/api/scan/nikto', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_NIKTO}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target, sessionId }),
@@ -140,7 +140,7 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
-      const response = await fetch('/api/scan/sqlmap', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_SQLMAP}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target, options, sessionId }),
@@ -165,7 +165,7 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
-      const response = await fetch('/api/scan/gobuster', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_GOBUSTER}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target, wordlist, sessionId }),
@@ -190,7 +190,7 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
-      const response = await fetch('/api/scan/amass', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_AMASS}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain, sessionId }),
@@ -215,7 +215,7 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
-      const response = await fetch('/api/scan/nuclei', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_NUCLEI}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target, templates, sessionId }),
@@ -240,7 +240,7 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
-      const response = await fetch('/api/scan/whatweb', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_WHATWEB}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target, sessionId }),
@@ -265,7 +265,7 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
-      const response = await fetch('/api/scan/sublist3r', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_SUBLIST3R}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain, sessionId }),
@@ -285,7 +285,7 @@ export class RealKaliToolsManager {
 
   // Common method to handle WebSocket streaming
   private streamResults(sessionId: string, callback?: StreamingCallback): Promise<string> {
-    const ws = new WebSocket(`ws://localhost:8080/stream/${sessionId}`);
+    const ws = new WebSocket(`${API_CONFIG.WS_URL}/stream/${sessionId}`);
     this.wsConnections.set(sessionId, ws);
 
     let fullOutput = '';
@@ -358,7 +358,7 @@ export class RealKaliToolsManager {
   // Generate comprehensive report
   async generateReport(scanResults: ScanResult[]): Promise<string> {
     try {
-      const response = await fetch('/api/reports/generate', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/reports/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scanResults })

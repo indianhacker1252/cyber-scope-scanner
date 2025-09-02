@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { RealKaliToolsManager } from '@/utils/realKaliTools';
 import { ScanResult, ToolConfig, AutomatedScanConfig } from '@/utils/kaliTools';
+import { DEMO_OUTPUTS } from '@/config/apiConfig';
 
 export const useKaliTools = () => {
   const [isKaliEnvironment, setIsKaliEnvironment] = useState(false);
   const [installedTools, setInstalledTools] = useState<ToolConfig[]>([]);
   const [activeSessions, setActiveSessions] = useState<ScanResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const { toast } = useToast();
 
   const toolsManager = RealKaliToolsManager.getInstance();
@@ -20,10 +22,16 @@ export const useKaliTools = () => {
         setIsKaliEnvironment(isKali);
         
         if (!isKali) {
+          setIsDemoMode(true);
           toast({
-            title: "Environment Warning",
-            description: "This tool is optimized for Kali Linux. Some features may not work correctly.",
-            variant: "destructive"
+            title: "Demo Mode Active",
+            description: "Backend not available. Running in demonstration mode with simulated results.",
+            variant: "default"
+          });
+        } else {
+          toast({
+            title: "Kali Linux Detected",
+            description: "Full tool functionality available",
           });
         }
         
@@ -31,10 +39,11 @@ export const useKaliTools = () => {
         setInstalledTools(tools);
       } catch (error) {
         console.error('Failed to check environment:', error);
+        setIsDemoMode(true);
         toast({
-          title: "Error",
-          description: "Failed to check system environment",
-          variant: "destructive"
+          title: "Demo Mode Active",
+          description: "Backend connection failed. Running in demonstration mode.",
+          variant: "default"
         });
       } finally {
         setIsLoading(false);
@@ -43,6 +52,16 @@ export const useKaliTools = () => {
 
     checkEnvironment();
   }, [toast]);
+
+  // Simulate demo scan with realistic output
+  const simulateDemoScan = (tool: string, target: string): Promise<string> => {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const demoOutput = DEMO_OUTPUTS[tool as keyof typeof DEMO_OUTPUTS] || [`Demo ${tool} scan output for ${target}`];
+        resolve(demoOutput.join('\n'));
+      }, 2000 + Math.random() * 3000); // Random delay between 2-5 seconds
+    });
+  };
 
   // Run network scan
   const runNetworkScan = useCallback(async (target: string, scanType: string = 'basic') => {
@@ -63,10 +82,15 @@ export const useKaliTools = () => {
     try {
       toast({
         title: "Network Scan Started",
-        description: `Running ${scanType} scan on ${target}`
+        description: `Running ${scanType} scan on ${target}${isDemoMode ? ' (Demo Mode)' : ''}`
       });
 
-      const output = await toolsManager.runNmapScan(target, scanType);
+      let output: string;
+      if (isDemoMode) {
+        output = await simulateDemoScan('nmap', target);
+      } else {
+        output = await toolsManager.runNmapScan(target, scanType);
+      }
       
       setActiveSessions(prev => prev.map(session => 
         session.id === sessionId 
@@ -83,7 +107,7 @@ export const useKaliTools = () => {
 
       toast({
         title: "Network Scan Completed",
-        description: `Scan completed for ${target}`
+        description: `Scan completed for ${target}${isDemoMode ? ' (Demo)' : ''}`
       });
 
       return output;
@@ -99,15 +123,17 @@ export const useKaliTools = () => {
           : session
       ));
 
-      toast({
-        title: "Network Scan Failed",
-        description: error.message,
-        variant: "destructive"
-      });
+      if (!isDemoMode) {
+        toast({
+          title: "Network Scan Failed",
+          description: error.message,
+          variant: "destructive"
+        });
+      }
 
       throw error;
     }
-  }, [toast]);
+  }, [toast, isDemoMode]);
 
   // Run web vulnerability scan
   const runWebScan = useCallback(async (target: string) => {
@@ -128,10 +154,15 @@ export const useKaliTools = () => {
     try {
       toast({
         title: "Web Scan Started",
-        description: `Running Nikto scan on ${target}`
+        description: `Running Nikto scan on ${target}${isDemoMode ? ' (Demo Mode)' : ''}`
       });
 
-      const output = await toolsManager.runNiktoScan(target);
+      let output: string;
+      if (isDemoMode) {
+        output = await simulateDemoScan('nikto', target);
+      } else {
+        output = await toolsManager.runNiktoScan(target);
+      }
       
       setActiveSessions(prev => prev.map(session => 
         session.id === sessionId 
@@ -148,7 +179,7 @@ export const useKaliTools = () => {
 
       toast({
         title: "Web Scan Completed",
-        description: `Nikto scan completed for ${target}`
+        description: `Nikto scan completed for ${target}${isDemoMode ? ' (Demo)' : ''}`
       });
 
       return output;
@@ -164,15 +195,17 @@ export const useKaliTools = () => {
           : session
       ));
 
-      toast({
-        title: "Web Scan Failed",
-        description: error.message,
-        variant: "destructive"
-      });
+      if (!isDemoMode) {
+        toast({
+          title: "Web Scan Failed",
+          description: error.message,
+          variant: "destructive"
+        });
+      }
 
       throw error;
     }
-  }, [toast]);
+  }, [toast, isDemoMode]);
 
   // Run SQL injection test
   const runSQLInjectionTest = useCallback(async (target: string, options?: string) => {
@@ -558,6 +591,7 @@ export const useKaliTools = () => {
 
   return {
     isKaliEnvironment,
+    isDemoMode,
     installedTools,
     activeSessions,
     isLoading,

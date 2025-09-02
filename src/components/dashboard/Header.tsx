@@ -3,6 +3,7 @@ import { Shield, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ProfileDialog from "./ProfileDialog";
 import SettingsDialog from "./SettingsDialog";
+import StatusIndicator from "./StatusIndicator";
 
 const Header = () => {
   const [profileOpen, setProfileOpen] = useState(false);
@@ -26,6 +27,7 @@ const Header = () => {
       </div>
       
       <div className="flex items-center space-x-4">
+        <StatusIndicator />
         <Button variant="ghost" size="sm" onClick={() => setSettingsOpen(true)}>
           <Settings className="h-4 w-4" />
         </Button>

@@ -340,6 +340,168 @@ app.post('/api/scan/nuclei', async (req, res) => {
   }
 });
 
+// WhatWeb scan endpoint
+app.post('/api/scan/whatweb', async (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  try {
+    const whatwebArgs = ['-a', '3', target];
+    console.log(`Starting WhatWeb scan: whatweb ${whatwebArgs.join(' ')}`);
+    
+    const process = spawn('whatweb', whatwebArgs);
+    activeSessions.set(sessionId, process);
+    sessionOutputs.set(sessionId, '');
+
+    process.stdout.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.stderr.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.on('close', (code) => {
+      const fullOutput = sessionOutputs.get(sessionId) || '';
+      broadcastToSession(sessionId, {
+        type: 'complete',
+        result: {
+          id: sessionId,
+          tool: 'whatweb',
+          target,
+          status: code === 0 ? 'completed' : 'failed',
+          output: fullOutput,
+          findings: parseWhatWebOutput(fullOutput)
+        }
+      });
+      activeSessions.delete(sessionId);
+      sessionOutputs.delete(sessionId);
+    });
+
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error('WhatWeb scan error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Amass scan endpoint
+app.post('/api/scan/amass', async (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  try {
+    const amassArgs = ['enum', '-d', domain];
+    console.log(`Starting Amass scan: amass ${amassArgs.join(' ')}`);
+    
+    const process = spawn('amass', amassArgs);
+    activeSessions.set(sessionId, process);
+    sessionOutputs.set(sessionId, '');
+
+    process.stdout.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.stderr.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.on('close', (code) => {
+      const fullOutput = sessionOutputs.get(sessionId) || '';
+      broadcastToSession(sessionId, {
+        type: 'complete',
+        result: {
+          id: sessionId,
+          tool: 'amass',
+          target: domain,
+          status: code === 0 ? 'completed' : 'failed',
+          output: fullOutput,
+          findings: parseAmassOutput(fullOutput)
+        }
+      });
+      activeSessions.delete(sessionId);
+      sessionOutputs.delete(sessionId);
+    });
+
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error('Amass scan error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Sublist3r scan endpoint
+app.post('/api/scan/sublist3r', async (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  try {
+    const sublist3rArgs = ['-d', domain];
+    console.log(`Starting Sublist3r scan: sublist3r ${sublist3rArgs.join(' ')}`);
+    
+    const process = spawn('sublist3r', sublist3rArgs);
+    activeSessions.set(sessionId, process);
+    sessionOutputs.set(sessionId, '');
+
+    process.stdout.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.stderr.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.on('close', (code) => {
+      const fullOutput = sessionOutputs.get(sessionId) || '';
+      broadcastToSession(sessionId, {
+        type: 'complete',
+        result: {
+          id: sessionId,
+          tool: 'sublist3r',
+          target: domain,
+          status: code === 0 ? 'completed' : 'failed',
+          output: fullOutput,
+          findings: parseSublist3rOutput(fullOutput)
+        }
+      });
+      activeSessions.delete(sessionId);
+      sessionOutputs.delete(sessionId);
+    });
+
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error('Sublist3r scan error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // WebSocket connections for real-time streaming
 const sessionConnections = new Map();
 
@@ -475,6 +637,57 @@ function parseNucleiOutput(output) {
         type: 'vulnerability',
         severity,
         description: line.trim()
+      });
+    }
+  });
+  
+  return findings;
+}
+
+function parseWhatWebOutput(output) {
+  const findings = [];
+  const lines = output.split('\n');
+  
+  lines.forEach(line => {
+    if (line.includes('200 OK') || line.includes('Title')) {
+      findings.push({
+        type: 'technology',
+        severity: 'info',
+        description: line.trim()
+      });
+    }
+  });
+  
+  return findings;
+}
+
+function parseAmassOutput(output) {
+  const findings = [];
+  const lines = output.split('\n');
+  
+  lines.forEach(line => {
+    if (line.trim() && !line.includes('OWASP Amass')) {
+      findings.push({
+        type: 'subdomain',
+        severity: 'info',
+        description: `Subdomain found: ${line.trim()}`
+      });
+    }
+  });
+  
+  return findings;
+}
+
+function parseSublist3rOutput(output) {
+  const findings = [];
+  const lines = output.split('\n');
+  
+  lines.forEach(line => {
+    if (line.trim() && !line.includes('Sublist3r')) {
+      findings.push({
+        type: 'subdomain',
+        severity: 'info',
+        description: `Subdomain enumerated: ${line.trim()}`
       });
     }
   });
