@@ -51,9 +51,9 @@ const EnhancedScanResults = () => {
   
   const [filters, setFilters] = useState<FilterState>({
     target: '',
-    tool: '',
-    status: '',
-    severity: '',
+    tool: 'all-tools',
+    status: 'all-status',
+    severity: 'all-severities',
     dateRange: ''
   });
   
@@ -93,10 +93,10 @@ const EnhancedScanResults = () => {
         session.tool.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesTarget = !filters.target || session.target.includes(filters.target);
-      const matchesTool = !filters.tool || session.tool === filters.tool;
-      const matchesStatus = !filters.status || session.status === filters.status;
+      const matchesTool = !filters.tool || filters.tool === 'all-tools' || session.tool === filters.tool;
+      const matchesStatus = !filters.status || filters.status === 'all-status' || session.status === filters.status;
       
-      const matchesSeverity = !filters.severity || 
+      const matchesSeverity = !filters.severity || filters.severity === 'all-severities' || 
         session.findings.some((finding: any) => finding.severity === filters.severity);
       
       return matchesSearch && matchesTarget && matchesTool && matchesStatus && matchesSeverity;
@@ -391,7 +391,7 @@ const EnhancedScanResults = () => {
                     <SelectValue placeholder="Tool" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Tools</SelectItem>
+                    <SelectItem value="all-tools">All Tools</SelectItem>
                     <SelectItem value="nmap">Nmap</SelectItem>
                     <SelectItem value="nikto">Nikto</SelectItem>
                     <SelectItem value="sqlmap">SQLMap</SelectItem>
@@ -404,7 +404,7 @@ const EnhancedScanResults = () => {
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="all-status">All Status</SelectItem>
                     <SelectItem value="running">Running</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                     <SelectItem value="failed">Failed</SelectItem>
@@ -415,7 +415,7 @@ const EnhancedScanResults = () => {
                     <SelectValue placeholder="Severity" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Severities</SelectItem>
+                    <SelectItem value="all-severities">All Severities</SelectItem>
                     <SelectItem value="critical">Critical</SelectItem>
                     <SelectItem value="high">High</SelectItem>
                     <SelectItem value="medium">Medium</SelectItem>
@@ -424,7 +424,7 @@ const EnhancedScanResults = () => {
                 </Select>
                 <Button 
                   variant="outline" 
-                  onClick={() => setFilters({ target: '', tool: '', status: '', severity: '', dateRange: '' })}
+                  onClick={() => setFilters({ target: '', tool: 'all-tools', status: 'all-status', severity: 'all-severities', dateRange: '' })}
                 >
                   Clear Filters
                 </Button>
