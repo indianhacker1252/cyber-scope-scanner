@@ -22,16 +22,16 @@ export const useKaliTools = () => {
         setIsKaliEnvironment(isKali);
         
         if (!isKali) {
-          setIsDemoMode(true);
+          setIsDemoMode(false); // Force disable demo mode
           toast({
-            title: "Demo Mode Active",
-            description: "Backend not available. Running in demonstration mode with simulated results.",
-            variant: "default"
+            title: "Backend Connection Failed",
+            description: "Unable to connect to Kali backend. Please ensure the backend server is running.",
+            variant: "destructive"
           });
         } else {
           toast({
-            title: "Kali Linux Detected",
-            description: "Full tool functionality available",
+            title: "Kali Linux Connected",
+            description: "Backend server connected successfully. Full tool functionality available.",
           });
         }
         
@@ -39,11 +39,11 @@ export const useKaliTools = () => {
         setInstalledTools(tools);
       } catch (error) {
         console.error('Failed to check environment:', error);
-        setIsDemoMode(true);
+        setIsDemoMode(false); // Force disable demo mode
         toast({
-          title: "Demo Mode Active",
-          description: "Backend connection failed. Running in demonstration mode.",
-          variant: "default"
+          title: "Backend Connection Error",
+          description: "Failed to connect to backend server. Please check if the server is running on localhost:8080.",
+          variant: "destructive"
         });
       } finally {
         setIsLoading(false);
@@ -82,15 +82,10 @@ export const useKaliTools = () => {
     try {
       toast({
         title: "Network Scan Started",
-        description: `Running ${scanType} scan on ${target}${isDemoMode ? ' (Demo Mode)' : ''}`
+        description: `Running ${scanType} scan on ${target}`
       });
 
-      let output: string;
-      if (isDemoMode) {
-        output = await simulateDemoScan('nmap', target);
-      } else {
-        output = await toolsManager.runNmapScan(target, scanType);
-      }
+      const output = await toolsManager.runNmapScan(target, scanType);
       
       setActiveSessions(prev => prev.map(session => 
         session.id === sessionId 
@@ -107,7 +102,7 @@ export const useKaliTools = () => {
 
       toast({
         title: "Network Scan Completed",
-        description: `Scan completed for ${target}${isDemoMode ? ' (Demo)' : ''}`
+        description: `Scan completed for ${target}`
       });
 
       return output;
@@ -123,13 +118,11 @@ export const useKaliTools = () => {
           : session
       ));
 
-      if (!isDemoMode) {
-        toast({
-          title: "Network Scan Failed",
-          description: error.message,
-          variant: "destructive"
-        });
-      }
+      toast({
+        title: "Network Scan Failed",
+        description: error.message,
+        variant: "destructive"
+      });
 
       throw error;
     }
@@ -154,15 +147,10 @@ export const useKaliTools = () => {
     try {
       toast({
         title: "Web Scan Started",
-        description: `Running Nikto scan on ${target}${isDemoMode ? ' (Demo Mode)' : ''}`
+        description: `Running Nikto scan on ${target}`
       });
 
-      let output: string;
-      if (isDemoMode) {
-        output = await simulateDemoScan('nikto', target);
-      } else {
-        output = await toolsManager.runNiktoScan(target);
-      }
+      const output = await toolsManager.runNiktoScan(target);
       
       setActiveSessions(prev => prev.map(session => 
         session.id === sessionId 
@@ -179,7 +167,7 @@ export const useKaliTools = () => {
 
       toast({
         title: "Web Scan Completed",
-        description: `Nikto scan completed for ${target}${isDemoMode ? ' (Demo)' : ''}`
+        description: `Nikto scan completed for ${target}`
       });
 
       return output;
@@ -195,13 +183,11 @@ export const useKaliTools = () => {
           : session
       ));
 
-      if (!isDemoMode) {
-        toast({
-          title: "Web Scan Failed",
-          description: error.message,
-          variant: "destructive"
-        });
-      }
+      toast({
+        title: "Web Scan Failed",
+        description: error.message,
+        variant: "destructive"
+      });
 
       throw error;
     }

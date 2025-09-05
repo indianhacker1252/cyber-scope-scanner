@@ -46,9 +46,11 @@ app.get('/api/tools/installed', (req, res) => {
   res.json(tools);
 });
 
+const { execSync } = require('child_process');
+
 function checkTool(toolName) {
   try {
-    const result = spawn('which', [toolName], { stdio: 'pipe' });
+    execSync(`which ${toolName}`, { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -64,6 +66,11 @@ app.post('/api/scan/nmap', async (req, res) => {
   }
 
   try {
+    // Check if nmap is installed
+    if (!checkTool('nmap')) {
+      return res.status(500).json({ error: 'Nmap is not installed on this system' });
+    }
+
     const nmapArgs = buildNmapArgs(target, scanType);
     console.log(`Starting Nmap scan: nmap ${nmapArgs.join(' ')}`);
     
@@ -119,6 +126,11 @@ app.post('/api/scan/nikto', async (req, res) => {
   const { target, sessionId } = req.body;
   
   try {
+    // Check if nikto is installed
+    if (!checkTool('nikto')) {
+      return res.status(500).json({ error: 'Nikto is not installed on this system' });
+    }
+
     const niktoArgs = ['-h', target, '-Format', 'txt'];
     console.log(`Starting Nikto scan: nikto ${niktoArgs.join(' ')}`);
     
@@ -173,6 +185,11 @@ app.post('/api/scan/sqlmap', async (req, res) => {
   const { target, options, sessionId } = req.body;
   
   try {
+    // Check if sqlmap is installed
+    if (!checkTool('sqlmap')) {
+      return res.status(500).json({ error: 'SQLMap is not installed on this system' });
+    }
+
     const sqlmapArgs = ['-u', target, '--batch', '--random-agent'];
     if (options) {
       sqlmapArgs.push(...options.split(' '));
@@ -231,6 +248,11 @@ app.post('/api/scan/gobuster', async (req, res) => {
   const { target, wordlist, sessionId } = req.body;
   
   try {
+    // Check if gobuster is installed
+    if (!checkTool('gobuster')) {
+      return res.status(500).json({ error: 'Gobuster is not installed on this system' });
+    }
+
     const wordlistPath = wordlist || '/usr/share/wordlists/dirb/common.txt';
     const gobusterArgs = ['dir', '-u', target, '-w', wordlistPath, '-t', '10'];
     
@@ -287,6 +309,11 @@ app.post('/api/scan/nuclei', async (req, res) => {
   const { target, templates, sessionId } = req.body;
   
   try {
+    // Check if nuclei is installed
+    if (!checkTool('nuclei')) {
+      return res.status(500).json({ error: 'Nuclei is not installed on this system' });
+    }
+
     const nucleiArgs = ['-target', target, '-v'];
     if (templates) {
       nucleiArgs.push('-t', templates);
@@ -345,6 +372,11 @@ app.post('/api/scan/whatweb', async (req, res) => {
   const { target, sessionId } = req.body;
   
   try {
+    // Check if whatweb is installed
+    if (!checkTool('whatweb')) {
+      return res.status(500).json({ error: 'WhatWeb is not installed on this system' });
+    }
+
     const whatwebArgs = ['-a', '3', target];
     console.log(`Starting WhatWeb scan: whatweb ${whatwebArgs.join(' ')}`);
     
@@ -399,6 +431,11 @@ app.post('/api/scan/amass', async (req, res) => {
   const { domain, sessionId } = req.body;
   
   try {
+    // Check if amass is installed
+    if (!checkTool('amass')) {
+      return res.status(500).json({ error: 'Amass is not installed on this system' });
+    }
+
     const amassArgs = ['enum', '-d', domain];
     console.log(`Starting Amass scan: amass ${amassArgs.join(' ')}`);
     
@@ -453,6 +490,11 @@ app.post('/api/scan/sublist3r', async (req, res) => {
   const { domain, sessionId } = req.body;
   
   try {
+    // Check if sublist3r is installed  
+    if (!checkTool('sublist3r')) {
+      return res.status(500).json({ error: 'Sublist3r is not installed on this system' });
+    }
+
     const sublist3rArgs = ['-d', domain];
     console.log(`Starting Sublist3r scan: sublist3r ${sublist3rArgs.join(' ')}`);
     
