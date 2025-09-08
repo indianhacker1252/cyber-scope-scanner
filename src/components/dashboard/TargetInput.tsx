@@ -21,7 +21,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useKaliTools } from "@/hooks/useKaliTools";
 
-const TargetInput = () => {
+interface TargetInputProps {
+  onNavigateToResults?: () => void;
+}
+
+const TargetInput = ({ onNavigateToResults }: TargetInputProps) => {
   const [targetUrl, setTargetUrl] = useState("");
   const [targetNetwork, setTargetNetwork] = useState("");
   const [selectedTests, setSelectedTests] = useState<string[]>([]);
@@ -426,7 +430,7 @@ const TargetInput = () => {
             <div className="space-x-2">
               <Button 
                 variant="outline"
-                onClick={() => window.location.hash = '#/results'}
+                onClick={onNavigateToResults}
               >
                 <Database className="h-4 w-4 mr-2" />
                 View Results

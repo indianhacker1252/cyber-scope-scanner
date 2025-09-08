@@ -30,7 +30,7 @@ const Index = () => {
       case "dashboard":
         return <DashboardOverview />;
       case "target":
-        return <TargetInput />;
+        return <TargetInput onNavigateToResults={() => setActiveSection("scan-results")} />;
       case "advanced-scanning":
         return <AdvancedScanning />;
       case "scan-results":
