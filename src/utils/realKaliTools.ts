@@ -283,41 +283,84 @@ export class RealKaliToolsManager {
     }
   }
 
-  // Common method to handle WebSocket streaming
+  // Common method to handle WebSocket streaming with better error handling
   private streamResults(sessionId: string, callback?: StreamingCallback): Promise<string> {
-    const ws = new WebSocket(`${API_CONFIG.WS_URL}/stream/${sessionId}`);
-    this.wsConnections.set(sessionId, ws);
-
-    let fullOutput = '';
-
     return new Promise((resolve, reject) => {
+      let fullOutput = '';
+      let resolved = false;
+
+      const ws = new WebSocket(`${API_CONFIG.WS_URL}/stream/${sessionId}`);
+      this.wsConnections.set(sessionId, ws);
+
+      // Set timeout for WebSocket connection
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          this.cleanup(sessionId);
+          reject(new Error('WebSocket connection timeout - ensure backend is running'));
+        }
+      }, 30000); // 30 second timeout
+
+      ws.onopen = () => {
+        console.log(`WebSocket connected for session: ${sessionId}`);
+        callback?.onOutput?.('Connected to scan server...\n');
+      };
+
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        
-        switch (data.type) {
-          case 'output':
-            fullOutput += data.content;
-            callback?.onOutput?.(data.content);
-            break;
-          case 'progress':
-            callback?.onProgress?.(data.progress);
-            break;
-          case 'complete':
-            resolve(fullOutput);
-            this.cleanup(sessionId);
-            callback?.onComplete?.(data.result);
-            break;
-          case 'error':
-            reject(new Error(data.message));
-            this.cleanup(sessionId);
-            callback?.onError?.(data.message);
-            break;
+        try {
+          const data = JSON.parse(event.data);
+          
+          switch (data.type) {
+            case 'output':
+              fullOutput += data.content;
+              callback?.onOutput?.(data.content);
+              break;
+            case 'progress':
+              callback?.onProgress?.(data.progress);
+              break;
+            case 'complete':
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                resolve(fullOutput);
+                this.cleanup(sessionId);
+                callback?.onComplete?.(data.result);
+              }
+              break;
+            case 'error':
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                reject(new Error(data.message));
+                this.cleanup(sessionId);
+                callback?.onError?.(data.message);
+              }
+              break;
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+          callback?.onError?.('Error parsing server response');
         }
       };
 
-      ws.onerror = () => {
-        reject(new Error('WebSocket connection failed'));
-        this.cleanup(sessionId);
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          reject(new Error('WebSocket connection failed - ensure backend is running on port 8080'));
+          this.cleanup(sessionId);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log(`WebSocket closed for session: ${sessionId}`);
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          this.cleanup(sessionId);
+          reject(new Error('Connection closed by server'));
+        }
       };
     });
   }
@@ -374,7 +417,7 @@ export class RealKaliToolsManager {
     }
   }
 
-  // Run automated scan sequence (parallel, full toolset)
+  // Run automated scan sequence (sequential to avoid system overload)
   async runAutomatedScan(config: AutomatedScanConfig): Promise<void> {
     const {
       target,
@@ -389,68 +432,80 @@ export class RealKaliToolsManager {
     // Helper: strip protocol/path for domain-focused tools
     const toDomain = (t: string) => t.replace(/^https?:\/\//, '').split('/')[0];
 
-    const runners = scanTypes.map((toolType) => {
+    // Run tools sequentially to prevent system overload
+    for (const toolType of scanTypes) {
       const startedAt = new Date();
-      switch (toolType) {
-        case 'nmap':
-          return this.runNmapScan(target, 'comprehensive')
-            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
-            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
-        case 'nikto':
-          return this.runNiktoScan(target)
-            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
-            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
-        case 'nuclei':
-          return this.runNucleiScan(target)
-            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
-            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
-        case 'whatweb':
-          return this.runWhatWebScan(target)
-            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
-            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
-        case 'gobuster':
-          return this.runGobusterScan(target)
-            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
-            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
-        case 'sqlmap':
-          return this.runSQLMapScan(target)
-            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
-            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
-        case 'amass': {
-          const domain = toDomain(target);
-          return this.runAmassEnum(domain)
-            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
-            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
-        }
-        case 'sublist3r': {
-          const domain = toDomain(target);
-          return this.runSublist3rScan(domain)
-            .then((output) => ({ toolType, status: 'completed' as const, output, startTime: startedAt }))
-            .catch((e) => ({ toolType, status: 'failed' as const, output: `Error: ${e.message}`, startTime: startedAt }));
-        }
-        default:
-          return Promise.resolve({ toolType, status: 'failed' as const, output: 'Unsupported tool', startTime: startedAt });
-      }
-    });
+      let result;
 
-    await Promise.all(
-      runners.map(async (p) => {
-        const r = await p;
-        completedTools++;
-        const progress = (completedTools / totalTools) * 100;
-        onProgress?.(progress, r.toolType);
-        onToolComplete?.({
-          id: `${r.toolType}-${Date.now()}`,
-          tool: r.toolType,
-          target,
-          status: r.status,
-          progress: r.status === 'completed' ? 100 : 0,
-          findings: [],
-          output: r.output,
-          startTime: r.startTime,
-          endTime: new Date(),
-        });
-      })
-    );
+      try {
+        console.log(`Starting ${toolType} scan on ${target}...`);
+        
+        switch (toolType) {
+          case 'nmap':
+            const nmapOutput = await this.runNmapScan(target, 'comprehensive');
+            result = { toolType, status: 'completed' as const, output: nmapOutput, startTime: startedAt };
+            break;
+          case 'nikto':
+            const niktoOutput = await this.runNiktoScan(target);
+            result = { toolType, status: 'completed' as const, output: niktoOutput, startTime: startedAt };
+            break;
+          case 'nuclei':
+            const nucleiOutput = await this.runNucleiScan(target);
+            result = { toolType, status: 'completed' as const, output: nucleiOutput, startTime: startedAt };
+            break;
+          case 'whatweb':
+            const whatwebOutput = await this.runWhatWebScan(target);
+            result = { toolType, status: 'completed' as const, output: whatwebOutput, startTime: startedAt };
+            break;
+          case 'gobuster':
+            const gobusterOutput = await this.runGobusterScan(target);
+            result = { toolType, status: 'completed' as const, output: gobusterOutput, startTime: startedAt };
+            break;
+          case 'sqlmap':
+            const sqlmapOutput = await this.runSQLMapScan(target);
+            result = { toolType, status: 'completed' as const, output: sqlmapOutput, startTime: startedAt };
+            break;
+          case 'amass': {
+            const domain = toDomain(target);
+            const amassOutput = await this.runAmassEnum(domain);
+            result = { toolType, status: 'completed' as const, output: amassOutput, startTime: startedAt };
+            break;
+          }
+          case 'sublist3r': {
+            const domain = toDomain(target);
+            const sublist3rOutput = await this.runSublist3rScan(domain);
+            result = { toolType, status: 'completed' as const, output: sublist3rOutput, startTime: startedAt };
+            break;
+          }
+          default:
+            result = { toolType, status: 'failed' as const, output: 'Unsupported tool', startTime: startedAt };
+        }
+      } catch (error: any) {
+        console.error(`Error running ${toolType}:`, error);
+        result = { toolType, status: 'failed' as const, output: `Error: ${error.message}`, startTime: startedAt };
+      }
+
+      // Update progress and notify completion
+      completedTools++;
+      const progress = (completedTools / totalTools) * 100;
+      onProgress?.(progress, result.toolType);
+      
+      onToolComplete?.({
+        id: `${result.toolType}-${Date.now()}`,
+        tool: result.toolType,
+        target,
+        status: result.status,
+        progress: result.status === 'completed' ? 100 : 0,
+        findings: [],
+        output: result.output,
+        startTime: result.startTime,
+        endTime: new Date(),
+      });
+
+      // Small delay between tools to prevent system overload
+      if (completedTools < totalTools) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+      }
+    }
   }
 }

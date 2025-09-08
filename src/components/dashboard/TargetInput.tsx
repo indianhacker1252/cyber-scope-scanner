@@ -424,6 +424,13 @@ const TargetInput = () => {
               {selectedTests.length} tests selected • Automated scan uses all tools
             </div>
             <div className="space-x-2">
+              <Button 
+                variant="outline"
+                onClick={() => window.location.hash = '#/results'}
+              >
+                <Database className="h-4 w-4 mr-2" />
+                View Results
+              </Button>
               <Button variant="outline">
                 <Download className="h-4 w-4 mr-2" />
                 Save Config

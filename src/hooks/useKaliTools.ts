@@ -479,29 +479,10 @@ export const useKaliTools = () => {
     });
   }, [toast]);
 
-  // Run automated comprehensive scan
+  // Run automated comprehensive scan with real-time updates
   const runAutomatedScan = useCallback(async (target: string, scanTypes?: string[]) => {
-    // Pre-create sessions for all tools that will run
     const toolsToRun = scanTypes && scanTypes.length > 0 ? scanTypes : ['nmap', 'whatweb', 'gobuster', 'nikto', 'nuclei', 'sqlmap', 'amass', 'sublist3r'];
-    const preSessions: ScanResult[] = [];
     
-    toolsToRun.forEach(tool => {
-      const sessionId = `${tool}-auto-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      preSessions.push({
-        id: sessionId,
-        tool,
-        target,
-        status: 'running',
-        progress: 0,
-        findings: [],
-        output: '',
-        startTime: new Date()
-      });
-    });
-
-    // Add all pre-sessions to state immediately
-    setActiveSessions(prev => [...prev, ...preSessions]);
-
     const config: AutomatedScanConfig = {
       target,
       scanTypes: toolsToRun,
@@ -512,21 +493,16 @@ export const useKaliTools = () => {
         });
       },
       onToolComplete: (result: ScanResult) => {
+        // Add or update the session with real-time results
         setActiveSessions(prev => {
-          const existingIndex = prev.findIndex(s => s.tool === result.tool && s.target === result.target && s.status === 'running');
+          const existingIndex = prev.findIndex(s => s.id === result.id);
           if (existingIndex >= 0) {
             const updated = [...prev];
-            updated[existingIndex] = {
-              ...updated[existingIndex],
-              status: result.status,
-              progress: 100,
-              output: result.output,
-              endTime: result.endTime,
-              findings: result.findings
-            };
+            updated[existingIndex] = result;
             return updated;
+          } else {
+            return [...prev, result];
           }
-          return prev;
         });
 
         toast({
@@ -540,7 +516,7 @@ export const useKaliTools = () => {
     try {
       toast({
         title: "Automated Scan Started",
-        description: `Running ${toolsToRun.length} security tools on ${target}`,
+        description: `Running ${toolsToRun.length} security tools sequentially on ${target}`,
       });
 
       await toolsManager.runAutomatedScan(config);
@@ -552,14 +528,21 @@ export const useKaliTools = () => {
 
       return activeSessions;
     } catch (error: any) {
+      // Mark any running sessions as failed
+      setActiveSessions(prev => prev.map(session => 
+        session.status === 'running' && session.target === target
+          ? { ...session, status: 'failed', output: error.message, endTime: new Date() }
+          : session
+      ));
+
       toast({
-        title: "Automated Scan Failed",
+        title: "Automated Scan Failed", 
         description: error.message,
         variant: "destructive"
       });
       throw error;
     }
-  }, [toast]);
+  }, [toast, activeSessions]);
 
   // Stop a specific scan
   const stopScan = useCallback((scanId: string) => {
