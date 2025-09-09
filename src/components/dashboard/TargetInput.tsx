@@ -210,6 +210,56 @@ const TargetInput = ({ onNavigateToResults }: TargetInputProps) => {
     }
   };
 
+  const handleFileUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.txt,.csv';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const content = event.target?.result as string;
+          setMultipleTargets(content);
+          toast({
+            title: "File Uploaded",
+            description: `Loaded ${content.split('\n').filter(line => line.trim()).length} targets`,
+          });
+        };
+        reader.readAsText(file);
+      }
+    };
+    input.click();
+  };
+
+  const handleSaveConfig = () => {
+    const config = {
+      targetUrl,
+      targetNetwork,
+      multipleTargets,
+      selectedTests,
+      scanIntensity,
+      threads,
+      timeout,
+      timestamp: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vapt-config-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Configuration Saved",
+      description: "VAPT configuration has been downloaded",
+    });
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -273,7 +323,7 @@ const TargetInput = ({ onNavigateToResults }: TargetInputProps) => {
                 <p className="text-muted-foreground mb-4">
                   Upload a text file containing target URLs, domains, or IP ranges
                 </p>
-                <Button variant="outline">
+                <Button variant="outline" onClick={handleFileUpload}>
                   <Upload className="h-4 w-4 mr-2" />
                   Choose File
                 </Button>
@@ -435,7 +485,7 @@ const TargetInput = ({ onNavigateToResults }: TargetInputProps) => {
                 <Database className="h-4 w-4 mr-2" />
                 View Results
               </Button>
-              <Button variant="outline">
+              <Button variant="outline" onClick={handleSaveConfig}>
                 <Download className="h-4 w-4 mr-2" />
                 Save Config
               </Button>
