@@ -63,7 +63,7 @@ export const useKaliTools = () => {
     });
   };
 
-  // Run network scan
+  // Run network scan with real-time streaming
   const runNetworkScan = useCallback(async (target: string, scanType: string = 'basic') => {
     const sessionId = `nmap-${Date.now()}`;
     const newSession: ScanResult = {
@@ -85,26 +85,58 @@ export const useKaliTools = () => {
         description: `Running ${scanType} scan on ${target}`
       });
 
-      const output = await toolsManager.runNmapScan(target, scanType);
-      
-      setActiveSessions(prev => prev.map(session => 
-        session.id === sessionId 
-          ? { 
-              ...session, 
-              status: 'completed', 
-              progress: 100, 
-              output,
-              endTime: new Date(),
-              findings: parseNmapOutput(output)
-            }
-          : session
-      ));
-
-      toast({
-        title: "Network Scan Completed",
-        description: `Scan completed for ${target}`
+      const output = await toolsManager.runNmapScan(target, scanType, {
+        onOutput: (data: string) => {
+          // Update real-time output
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, output: session.output + data }
+              : session
+          ));
+        },
+        onProgress: (progress: number) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, progress }
+              : session
+          ));
+        },
+        onComplete: (result: ScanResult) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'completed', 
+                  progress: 100, 
+                  endTime: new Date(),
+                  findings: parseNmapOutput(session.output)
+                }
+              : session
+          ));
+          toast({
+            title: "Network Scan Completed",
+            description: `Scan completed for ${target}`
+          });
+        },
+        onError: (error: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'failed', 
+                  output: session.output + `\nERROR: ${error}`,
+                  endTime: new Date()
+                }
+              : session
+          ));
+          toast({
+            title: "Network Scan Failed",
+            description: error,
+            variant: "destructive"
+          });
+        }
       });
-
+      
       return output;
     } catch (error: any) {
       setActiveSessions(prev => prev.map(session => 
@@ -112,7 +144,7 @@ export const useKaliTools = () => {
           ? { 
               ...session, 
               status: 'failed', 
-              output: error.message,
+              output: session.output + `\nFATAL ERROR: ${error.message}`,
               endTime: new Date()
             }
           : session
@@ -120,15 +152,15 @@ export const useKaliTools = () => {
 
       toast({
         title: "Network Scan Failed",
-        description: error.message,
+        description: `Connection failed: ${error.message}`,
         variant: "destructive"
       });
 
       throw error;
     }
-  }, [toast, isDemoMode]);
+  }, [toast]);
 
-  // Run web vulnerability scan
+  // Run web vulnerability scan with real-time streaming
   const runWebScan = useCallback(async (target: string) => {
     const sessionId = `nikto-${Date.now()}`;
     const newSession: ScanResult = {
@@ -150,26 +182,57 @@ export const useKaliTools = () => {
         description: `Running Nikto scan on ${target}`
       });
 
-      const output = await toolsManager.runNiktoScan(target);
-      
-      setActiveSessions(prev => prev.map(session => 
-        session.id === sessionId 
-          ? { 
-              ...session, 
-              status: 'completed', 
-              progress: 100, 
-              output,
-              endTime: new Date(),
-              findings: parseNiktoOutput(output)
-            }
-          : session
-      ));
-
-      toast({
-        title: "Web Scan Completed",
-        description: `Nikto scan completed for ${target}`
+      const output = await toolsManager.runNiktoScan(target, {
+        onOutput: (data: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, output: session.output + data }
+              : session
+          ));
+        },
+        onProgress: (progress: number) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, progress }
+              : session
+          ));
+        },
+        onComplete: (result: ScanResult) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'completed', 
+                  progress: 100, 
+                  endTime: new Date(),
+                  findings: parseNiktoOutput(session.output)
+                }
+              : session
+          ));
+          toast({
+            title: "Web Scan Completed",
+            description: `Nikto scan completed for ${target}`
+          });
+        },
+        onError: (error: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'failed', 
+                  output: session.output + `\nERROR: ${error}`,
+                  endTime: new Date()
+                }
+              : session
+          ));
+          toast({
+            title: "Web Scan Failed",
+            description: error,
+            variant: "destructive"
+          });
+        }
       });
-
+      
       return output;
     } catch (error: any) {
       setActiveSessions(prev => prev.map(session => 
@@ -177,23 +240,23 @@ export const useKaliTools = () => {
           ? { 
               ...session, 
               status: 'failed', 
-              output: error.message,
+              output: session.output + `\nFATAL ERROR: ${error.message}`,
               endTime: new Date()
             }
           : session
       ));
 
       toast({
-        title: "Web Scan Failed",
-        description: error.message,
+        title: "Web Scan Failed", 
+        description: `Connection failed: ${error.message}`,
         variant: "destructive"
       });
 
       throw error;
     }
-  }, [toast, isDemoMode]);
+  }, [toast]);
 
-  // Run SQL injection test
+  // Run SQL injection test with real-time streaming
   const runSQLInjectionTest = useCallback(async (target: string, options?: string) => {
     const sessionId = `sqlmap-${Date.now()}`;
     const newSession: ScanResult = {
@@ -215,24 +278,55 @@ export const useKaliTools = () => {
         description: `Running SQLMap on ${target}`
       });
 
-      const output = await toolsManager.runSQLMapScan(target, options);
-      
-      setActiveSessions(prev => prev.map(session => 
-        session.id === sessionId 
-          ? { 
-              ...session, 
-              status: 'completed', 
-              progress: 100, 
-              output,
-              endTime: new Date(),
-              findings: parseSQLMapOutput(output)
-            }
-          : session
-      ));
-
-      toast({
-        title: "SQL Injection Test Completed",
-        description: `SQLMap test completed for ${target}`
+      const output = await toolsManager.runSQLMapScan(target, options, {
+        onOutput: (data: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, output: session.output + data }
+              : session
+          ));
+        },
+        onProgress: (progress: number) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, progress }
+              : session
+          ));
+        },
+        onComplete: (result: ScanResult) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'completed', 
+                  progress: 100, 
+                  endTime: new Date(),
+                  findings: parseSQLMapOutput(session.output)
+                }
+              : session
+          ));
+          toast({
+            title: "SQL Injection Test Completed",
+            description: `SQLMap test completed for ${target}`
+          });
+        },
+        onError: (error: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'failed', 
+                  output: session.output + `\nERROR: ${error}`,
+                  endTime: new Date()
+                }
+              : session
+          ));
+          toast({
+            title: "SQL Injection Test Failed",
+            description: error,
+            variant: "destructive"
+          });
+        }
       });
 
       return output;
@@ -242,7 +336,7 @@ export const useKaliTools = () => {
           ? { 
               ...session, 
               status: 'failed', 
-              output: error.message,
+              output: session.output + `\nFATAL ERROR: ${error.message}`,
               endTime: new Date()
             }
           : session
@@ -250,7 +344,7 @@ export const useKaliTools = () => {
 
       toast({
         title: "SQL Injection Test Failed",
-        description: error.message,
+        description: `Connection failed: ${error.message}`,
         variant: "destructive"
       });
 
@@ -258,7 +352,7 @@ export const useKaliTools = () => {
     }
   }, [toast]);
 
-  // Run directory enumeration
+  // Run directory enumeration with real-time streaming
   const runDirectoryEnum = useCallback(async (target: string, wordlist?: string) => {
     const sessionId = `gobuster-${Date.now()}`;
     const newSession: ScanResult = {
@@ -280,24 +374,55 @@ export const useKaliTools = () => {
         description: `Running Gobuster on ${target}`
       });
 
-      const output = await toolsManager.runGobusterScan(target, wordlist);
-      
-      setActiveSessions(prev => prev.map(session => 
-        session.id === sessionId 
-          ? { 
-              ...session, 
-              status: 'completed', 
-              progress: 100, 
-              output,
-              endTime: new Date(),
-              findings: parseGobusterOutput(output)
-            }
-          : session
-      ));
-
-      toast({
-        title: "Directory Enumeration Completed",
-        description: `Gobuster scan completed for ${target}`
+      const output = await toolsManager.runGobusterScan(target, wordlist, {
+        onOutput: (data: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, output: session.output + data }
+              : session
+          ));
+        },
+        onProgress: (progress: number) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, progress }
+              : session
+          ));
+        },
+        onComplete: (result: ScanResult) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'completed', 
+                  progress: 100, 
+                  endTime: new Date(),
+                  findings: parseGobusterOutput(session.output)
+                }
+              : session
+          ));
+          toast({
+            title: "Directory Enumeration Completed",
+            description: `Gobuster scan completed for ${target}`
+          });
+        },
+        onError: (error: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'failed', 
+                  output: session.output + `\nERROR: ${error}`,
+                  endTime: new Date()
+                }
+              : session
+          ));
+          toast({
+            title: "Directory Enumeration Failed",
+            description: error,
+            variant: "destructive"
+          });
+        }
       });
 
       return output;
@@ -307,7 +432,7 @@ export const useKaliTools = () => {
           ? { 
               ...session, 
               status: 'failed', 
-              output: error.message,
+              output: session.output + `\nFATAL ERROR: ${error.message}`,
               endTime: new Date()
             }
           : session
@@ -315,7 +440,7 @@ export const useKaliTools = () => {
 
       toast({
         title: "Directory Enumeration Failed",
-        description: error.message,
+        description: `Connection failed: ${error.message}`,
         variant: "destructive"
       });
 
@@ -323,7 +448,7 @@ export const useKaliTools = () => {
     }
   }, [toast]);
 
-  // Run subdomain enumeration
+  // Run subdomain enumeration with real-time streaming  
   const runSubdomainEnum = useCallback(async (domain: string) => {
     const sessionId = `amass-${Date.now()}`;
     const newSession: ScanResult = {
@@ -345,24 +470,55 @@ export const useKaliTools = () => {
         description: `Running Amass on ${domain}`
       });
 
-      const output = await toolsManager.runAmassEnum(domain);
-      
-      setActiveSessions(prev => prev.map(session => 
-        session.id === sessionId 
-          ? { 
-              ...session, 
-              status: 'completed', 
-              progress: 100, 
-              output,
-              endTime: new Date(),
-              findings: parseAmassOutput(output)
-            }
-          : session
-      ));
-
-      toast({
-        title: "Subdomain Enumeration Completed",
-        description: `Amass enumeration completed for ${domain}`
+      const output = await toolsManager.runAmassEnum(domain, {
+        onOutput: (data: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, output: session.output + data }
+              : session
+          ));
+        },
+        onProgress: (progress: number) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, progress }
+              : session
+          ));
+        },
+        onComplete: (result: ScanResult) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'completed', 
+                  progress: 100, 
+                  endTime: new Date(),
+                  findings: parseAmassOutput(session.output)
+                }
+              : session
+          ));
+          toast({
+            title: "Subdomain Enumeration Completed",
+            description: `Amass enumeration completed for ${domain}`
+          });
+        },
+        onError: (error: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'failed', 
+                  output: session.output + `\nERROR: ${error}`,
+                  endTime: new Date()
+                }
+              : session
+          ));
+          toast({
+            title: "Subdomain Enumeration Failed",
+            description: error,
+            variant: "destructive"
+          });
+        }
       });
 
       return output;
@@ -372,7 +528,7 @@ export const useKaliTools = () => {
           ? { 
               ...session, 
               status: 'failed', 
-              output: error.message,
+              output: session.output + `\nFATAL ERROR: ${error.message}`,
               endTime: new Date()
             }
           : session
@@ -380,7 +536,7 @@ export const useKaliTools = () => {
 
       toast({
         title: "Subdomain Enumeration Failed",
-        description: error.message,
+        description: `Connection failed: ${error.message}`,
         variant: "destructive"
       });
 
@@ -410,26 +566,57 @@ export const useKaliTools = () => {
         description: `Running Nuclei on ${target}`
       });
 
-      const output = await toolsManager.runNucleiScan(target, templates);
-      
-      setActiveSessions(prev => prev.map(session => 
-        session.id === sessionId 
-          ? { 
-              ...session, 
-              status: 'completed', 
-              progress: 100, 
-              output,
-              endTime: new Date(),
-              findings: parseNucleiOutput(output)
-            }
-          : session
-      ));
-
-      toast({
-        title: "Vulnerability Scan Completed",
-        description: `Nuclei scan completed for ${target}`
+      const output = await toolsManager.runNucleiScan(target, templates, {
+        onOutput: (data: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, output: session.output + data }
+              : session
+          ));
+        },
+        onProgress: (progress: number) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { ...session, progress }
+              : session
+          ));
+        },
+        onComplete: (result: ScanResult) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'completed', 
+                  progress: 100, 
+                  endTime: new Date(),
+                  findings: parseNucleiOutput(session.output)
+                }
+              : session
+          ));
+          toast({
+            title: "Vulnerability Scan Completed",
+            description: `Nuclei scan completed for ${target}`
+          });
+        },
+        onError: (error: string) => {
+          setActiveSessions(prev => prev.map(session => 
+            session.id === sessionId 
+              ? { 
+                  ...session, 
+                  status: 'failed', 
+                  output: session.output + `\nERROR: ${error}`,
+                  endTime: new Date()
+                }
+              : session
+          ));
+          toast({
+            title: "Vulnerability Scan Failed",
+            description: error,
+            variant: "destructive"
+          });
+        }
       });
-
+      
       return output;
     } catch (error: any) {
       setActiveSessions(prev => prev.map(session => 
@@ -437,7 +624,7 @@ export const useKaliTools = () => {
           ? { 
               ...session, 
               status: 'failed', 
-              output: error.message,
+              output: session.output + `\nFATAL ERROR: ${error.message}`,
               endTime: new Date()
             }
           : session
@@ -445,7 +632,7 @@ export const useKaliTools = () => {
 
       toast({
         title: "Vulnerability Scan Failed",
-        description: error.message,
+        description: `Connection failed: ${error.message}`,
         variant: "destructive"
       });
 

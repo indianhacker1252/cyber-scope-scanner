@@ -46,7 +46,7 @@ interface FilterState {
 }
 
 const EnhancedScanResults = () => {
-  const { activeSessions, generateReport, clearSessions } = useKaliTools();
+  const { activeSessions, generateReport, clearSessions, isKaliEnvironment } = useKaliTools();
   const { toast } = useToast();
   
   const [filters, setFilters] = useState<FilterState>({
@@ -62,27 +62,19 @@ const EnhancedScanResults = () => {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [liveOutput, setLiveOutput] = useState<Record<string, string[]>>({});
 
-  // Real-time output streaming
+  // Real-time output streaming from active sessions
   useEffect(() => {
-    const intervals: NodeJS.Timeout[] = [];
+    const newLiveOutput: Record<string, string[]> = {};
     
     activeSessions.forEach(session => {
-      if (session.status === 'running') {
-        const interval = setInterval(() => {
-          // Simulate real-time output updates
-          setLiveOutput(prev => ({
-            ...prev,
-            [session.id]: [
-              ...(prev[session.id] || []),
-              `[${new Date().toLocaleTimeString()}] ${session.tool}: Scanning ${session.target}...`
-            ].slice(-20) // Keep last 20 lines
-          }));
-        }, 2000);
-        intervals.push(interval);
+      if (session.output) {
+        // Split output into lines and keep recent ones
+        const lines = session.output.split('\n').filter(line => line.trim());
+        newLiveOutput[session.id] = lines.slice(-50); // Keep last 50 lines
       }
     });
-
-    return () => intervals.forEach(clearInterval);
+    
+    setLiveOutput(newLiveOutput);
   }, [activeSessions]);
 
   // Filter and search logic
@@ -281,6 +273,22 @@ const EnhancedScanResults = () => {
     <div className="space-y-6">
       {/* Statistics Overview */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {/* Connection Status */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-center">
+              <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                isKaliEnvironment 
+                  ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' 
+                  : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+              }`}>
+                {isKaliEnvironment ? '● Connected' : '● Disconnected'}
+              </div>
+              <p className="text-sm text-muted-foreground mt-2">Backend Status</p>
+            </div>
+          </CardContent>
+        </Card>
+        
         <Card>
           <CardContent className="p-4">
             <div className="text-center">
@@ -302,14 +310,6 @@ const EnhancedScanResults = () => {
             <div className="text-center">
               <p className="text-2xl font-bold text-blue-600">{stats.running}</p>
               <p className="text-sm text-muted-foreground">Running</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-center">
-              <p className="text-2xl font-bold text-red-600">{stats.failed}</p>
-              <p className="text-sm text-muted-foreground">Failed</p>
             </div>
           </CardContent>
         </Card>
@@ -432,7 +432,7 @@ const EnhancedScanResults = () => {
             </CardContent>
           </Card>
 
-          {/* Scan Results Table */}
+           {/* Scan Results Table */}
           <Card>
             <CardHeader>
               <CardTitle>Scan Results ({filteredSessions.length})</CardTitle>
@@ -451,14 +451,184 @@ const EnhancedScanResults = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredSessions.map((session) => {
-                    const Icon = getToolIcon(session.tool);
-                    return (
-                      <TableRow key={session.id}>
-                        <TableCell className="font-medium">{session.target}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center">
-                            <Icon className="h-4 w-4 mr-2 text-primary" />
+                  {filteredSessions.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8">
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-center space-x-2 text-muted-foreground">
+                            <Search className="h-8 w-8" />
+                            <p>No scan results found</p>
+                          </div>
+                          {!isKaliEnvironment && (
+                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                              <div className="flex items-start space-x-2">
+                                <XCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                                <div className="text-left">
+                                  <h4 className="text-sm font-medium text-red-800 dark:text-red-200">Backend Connection Failed</h4>
+                                  <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                                    Cannot connect to Kali Linux backend. Please ensure:
+                                  </p>
+                                  <ul className="text-sm text-red-700 dark:text-red-300 mt-2 list-disc list-inside space-y-1">
+                                    <li>Backend server is running: <code className="bg-red-100 dark:bg-red-900/50 px-1 rounded">cd server && npm start</code></li>
+                                    <li>Server is accessible on localhost:8080</li>
+                                    <li>WebSocket connections are not blocked</li>
+                                    <li>You're running this on a Kali Linux system</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {isKaliEnvironment && activeSessions.length === 0 && (
+                            <p className="text-sm text-muted-foreground">
+                              Start a scan from the Target Input section to see results here.
+                            </p>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredSessions.map((session) => {
+                      const Icon = getToolIcon(session.tool);
+                      return (
+                        <TableRow key={session.id}>
+                          <TableCell className="font-medium">{session.target}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center">
+                              <Icon className="h-4 w-4 mr-2 text-primary" />
+                              {session.tool}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <Badge className={getStatusColor(session.status)}>
+                                {session.status}
+                              </Badge>
+                              {session.status === 'running' && (
+                                <Progress value={session.progress} className="w-16 h-2" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1">
+                              <span className="font-medium">{session.findings.length}</span>
+                              {session.findings.length > 0 && (
+                                <div className="flex space-x-1">
+                                  {session.findings.some((f: any) => f.severity === 'critical') && (
+                                    <Badge variant="destructive" className="text-xs px-1">C</Badge>
+                                  )}
+                                  {session.findings.some((f: any) => f.severity === 'high') && (
+                                    <Badge variant="secondary" className="text-xs px-1 bg-orange-100 text-orange-800">H</Badge>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {session.endTime ? (
+                              formatDuration(session.startTime, session.endTime)
+                            ) : session.status === 'running' ? (
+                              <span className="text-blue-600">Running...</span>
+                            ) : (
+                              '-'
+                            )}
+                          </TableCell>
+                          <TableCell>{session.startTime?.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSelectedScan(session)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-4xl max-h-[80vh]">
+                                <DialogHeader>
+                                  <DialogTitle className="flex items-center space-x-2">
+                                    <Icon className="h-5 w-5" />
+                                    <span>{session.tool.toUpperCase()} - {session.target}</span>
+                                  </DialogTitle>
+                                  <DialogDescription>
+                                    Scan details and output
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                      <strong>Status:</strong>
+                                      <Badge className={`ml-2 ${getStatusColor(session.status)}`}>
+                                        {session.status}
+                                      </Badge>
+                                    </div>
+                                    <div>
+                                      <strong>Findings:</strong> {session.findings.length}
+                                    </div>
+                                    <div>
+                                      <strong>Started:</strong> {session.startTime?.toLocaleString()}
+                                    </div>
+                                    <div>
+                                      <strong>Duration:</strong> {
+                                        session.endTime 
+                                          ? formatDuration(session.startTime, session.endTime)
+                                          : session.status === 'running' ? 'Running...' : '-'
+                                      }
+                                    </div>
+                                  </div>
+                                  
+                                  <Tabs defaultValue="output" className="w-full">
+                                    <TabsList>
+                                      <TabsTrigger value="output">Raw Output</TabsTrigger>
+                                      <TabsTrigger value="findings">Findings ({session.findings.length})</TabsTrigger>
+                                    </TabsList>
+                                    
+                                    <TabsContent value="output">
+                                      <ScrollArea className="h-64 w-full border rounded p-3">
+                                        <pre className="text-xs whitespace-pre-wrap font-mono">
+                                          {session.output || 'No output available'}
+                                        </pre>
+                                      </ScrollArea>
+                                    </TabsContent>
+                                    
+                                    <TabsContent value="findings">
+                                      <ScrollArea className="h-64 w-full">
+                                        <div className="space-y-2">
+                                          {session.findings.length > 0 ? (
+                                            session.findings.map((finding: any, index: number) => (
+                                              <div key={index} className="p-3 border rounded-lg">
+                                                <div className="flex items-center justify-between mb-2">
+                                                  <h4 className="font-medium">{finding.title || `Finding ${index + 1}`}</h4>
+                                                  {finding.severity && (
+                                                    <Badge className={getSeverityColor(finding.severity)}>
+                                                      {finding.severity}
+                                                    </Badge>
+                                                  )}
+                                                </div>
+                                                <p className="text-sm text-muted-foreground">
+                                                  {finding.description || finding.details || 'No description available'}
+                                                </p>
+                                              </div>
+                                            ))
+                                          ) : (
+                                            <p className="text-center text-muted-foreground">No findings detected</p>
+                                          )}
+                                        </div>
+                                      </ScrollArea>
+                                    </TabsContent>
+                                  </Tabs>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
                             {session.tool.toUpperCase()}
                           </div>
                         </TableCell>
@@ -731,9 +901,25 @@ const EnhancedScanResults = () => {
                   <div className="text-center py-8">
                     <Terminal className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                     <p className="text-lg font-medium mb-2">No Active Scans</p>
-                    <p className="text-muted-foreground">
+                    <p className="text-muted-foreground mb-4">
                       Start a scan to see live output here
                     </p>
+                    {!isKaliEnvironment && (
+                      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mt-4">
+                        <div className="flex items-start space-x-2">
+                          <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                          <div className="text-left">
+                            <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Backend Not Connected</h4>
+                            <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                              Ensure the Kali Linux backend server is running on port 8080.
+                            </p>
+                            <code className="text-xs bg-yellow-100 dark:bg-yellow-900/50 px-2 py-1 rounded mt-2 block">
+                              cd server && npm start
+                            </code>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
