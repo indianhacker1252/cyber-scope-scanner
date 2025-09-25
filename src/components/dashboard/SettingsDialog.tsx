@@ -34,6 +34,8 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     
     // API Settings
     openaiApiKey: "",
+    backendUrl: "",
+    wsUrl: "",
     scanHistoryLimit: 100,
     reportFormat: "pdf",
     
@@ -47,7 +49,14 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     // Load settings from localStorage
     const savedSettings = localStorage.getItem('app_settings');
     if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
+      const parsed = JSON.parse(savedSettings);
+      setSettings(prev => ({ ...prev, ...parsed }));
+    }
+    // Load backend/WS URLs
+    const storedBackend = localStorage.getItem('backend_url') || '';
+    const storedWs = localStorage.getItem('ws_url') || '';
+    if (storedBackend || storedWs) {
+      setSettings(prev => ({ ...prev, backendUrl: storedBackend, wsUrl: storedWs }));
     }
     
     // Load OpenAI API key
@@ -61,6 +70,10 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     // Save general settings
     localStorage.setItem('app_settings', JSON.stringify(settings));
     
+    // Save backend/WS URLs
+    if (settings.backendUrl) localStorage.setItem('backend_url', settings.backendUrl);
+    if (settings.wsUrl) localStorage.setItem('ws_url', settings.wsUrl);
+    
     // Save OpenAI API key
     if (settings.openaiApiKey) {
       openaiService.setApiKey(settings.openaiApiKey);
@@ -68,7 +81,7 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     
     toast({
       title: "Settings Saved",
-      description: "Your settings have been saved successfully."
+      description: "Your settings have been saved. Reload the app to apply connection changes.",
     });
   };
 
@@ -84,6 +97,8 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
       verboseLogging: true,
       saveRawOutput: true,
       openaiApiKey: "",
+      backendUrl: "",
+      wsUrl: "",
       scanHistoryLimit: 100,
       reportFormat: "pdf",
       sessionTimeout: 30,
@@ -93,6 +108,8 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
     
     setSettings(defaultSettings);
     localStorage.removeItem('app_settings');
+    localStorage.removeItem('backend_url');
+    localStorage.removeItem('ws_url');
     openaiService.clearApiKey();
     
     toast({
@@ -264,6 +281,29 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                   <p className="text-sm text-muted-foreground">
                     Required for PentestGPT and AI-powered analysis features
                   </p>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="backendUrl">Backend API URL</Label>
+                    <Input
+                      id="backendUrl"
+                      placeholder="http://localhost:8080"
+                      value={settings.backendUrl}
+                      onChange={(e) => setSettings({...settings, backendUrl: e.target.value})}
+                    />
+                    <p className="text-xs text-muted-foreground">Where the Express server is running</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="wsUrl">WebSocket URL</Label>
+                    <Input
+                      id="wsUrl"
+                      placeholder="ws://localhost:8080"
+                      value={settings.wsUrl}
+                      onChange={(e) => setSettings({...settings, wsUrl: e.target.value})}
+                    />
+                    <p className="text-xs text-muted-foreground">Usually same host as API (ws:// or wss://)</p>
+                  </div>
                 </div>
                 
                 <Separator />

@@ -1,11 +1,20 @@
-// API Configuration for VAPT Tool Backend
+// API Configuration for VAPT Tool Backend (runtime configurable)
 export const API_CONFIG = {
-  BASE_URL: process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8080' 
-    : 'http://localhost:8080',
-  WS_URL: process.env.NODE_ENV === 'development'
-    ? 'ws://localhost:8080'
-    : 'ws://localhost:8080',
+  get BASE_URL() {
+    try {
+      const stored = localStorage.getItem('backend_url');
+      if (stored && /^https?:\/\//i.test(stored)) return stored.replace(/\/$/, '');
+    } catch {}
+    // Default to localhost for dev setups
+    return 'http://localhost:8080';
+  },
+  get WS_URL() {
+    try {
+      const stored = localStorage.getItem('ws_url');
+      if (stored && /^(ws|wss):\/\//i.test(stored)) return stored.replace(/\/$/, '');
+    } catch {}
+    return 'ws://localhost:8080';
+  },
   ENDPOINTS: {
     CHECK_KALI: '/api/check-kali',
     TOOLS_INSTALLED: '/api/tools/installed',

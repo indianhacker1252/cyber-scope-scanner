@@ -1,18 +1,21 @@
 import { useState } from "react";
-import { Shield, Settings, User } from "lucide-react";
+import { Shield, Settings, User, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ProfileDialog from "./ProfileDialog";
 import SettingsDialog from "./SettingsDialog";
 import StatusIndicator from "./StatusIndicator";
+import DiagnosticsDialog from "./DiagnosticsDialog";
 
 const Header = () => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [diagOpen, setDiagOpen] = useState(false);
 
   return (
     <>
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <DiagnosticsDialog open={diagOpen} onOpenChange={setDiagOpen} />
     <header className="bg-card border-b border-border px-6 py-4 flex items-center justify-between">
       <div className="flex items-center space-x-4">
         <div className="flex items-center space-x-2">
@@ -26,8 +29,11 @@ const Header = () => {
         </div>
       </div>
       
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-2">
         <StatusIndicator />
+        <Button variant="ghost" size="sm" onClick={() => setDiagOpen(true)}>
+          <Activity className="h-4 w-4" />
+        </Button>
         <Button variant="ghost" size="sm" onClick={() => setSettingsOpen(true)}>
           <Settings className="h-4 w-4" />
         </Button>
