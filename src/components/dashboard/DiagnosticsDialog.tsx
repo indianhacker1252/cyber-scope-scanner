@@ -81,8 +81,30 @@ const DiagnosticsDialog = ({ open, onOpenChange }: DiagnosticsDialogProps) => {
         setItem('Tools Endpoint', { status: 'fail', message: `Network error: ${e?.message || 'unknown'}` });
       }
 
-      // WebSocket URL note (best-effort)
-      setItem('WebSocket URL', { status: 'pass', message: 'Configured', details: WS_URL });
+      // Test WebSocket connectivity
+      try {
+        const testWs = new WebSocket(`${WS_URL}/stream/health-check`);
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            testWs.close();
+            reject(new Error('Timeout'));
+          }, 5000);
+          
+          testWs.onopen = () => {
+            clearTimeout(timeout);
+            testWs.close();
+            resolve();
+          };
+          
+          testWs.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error('Connection failed'));
+          };
+        });
+        setItem('WebSocket URL', { status: 'pass', message: 'Connected successfully', details: WS_URL });
+      } catch (e: any) {
+        setItem('WebSocket URL', { status: 'fail', message: `Cannot connect: ${e?.message || 'unknown'}`, details: WS_URL });
+      }
 
       setRunning(false);
     };
@@ -126,15 +148,19 @@ const DiagnosticsDialog = ({ open, onOpenChange }: DiagnosticsDialogProps) => {
         </DialogHeader>
 
         {crossOriginWarning && (
-          <Card>
+          <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950/20">
             <CardHeader className="py-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <ShieldAlert className="h-4 w-4" /> Environment Constraint
+              <CardTitle className="text-sm flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                <ShieldAlert className="h-4 w-4" /> Cross-Origin Issue Detected
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Backend is set to localhost but the app is running on a hosted preview. The browser cannot reach your local machine.
-              Run the frontend locally (npm run dev) alongside the backend, or set a public BASE_URL in Settings.
+            <CardContent className="text-sm text-orange-600 dark:text-orange-300 space-y-2">
+              <p>Backend is set to <code className="px-1 py-0.5 bg-orange-100 dark:bg-orange-900/40 rounded">localhost</code> but the app is hosted remotely. The browser blocks this connection.</p>
+              <p className="font-medium">Solutions:</p>
+              <ul className="list-disc list-inside space-y-1 ml-2">
+                <li>Run frontend locally: <code className="px-1 py-0.5 bg-orange-100 dark:bg-orange-900/40 rounded">npm run dev</code></li>
+                <li>Or deploy backend publicly and update Settings → Backend API URL</li>
+              </ul>
             </CardContent>
           </Card>
         )}

@@ -54,6 +54,8 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      console.log(`[Nmap] Starting scan: ${target} (${scanType}) - Session: ${sessionId}`);
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_NMAP}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,48 +64,24 @@ export class RealKaliToolsManager {
       });
 
       if (!response.ok) {
-        throw new Error(`Nmap scan failed: ${response.statusText}`);
+        const errorText = await response.text().catch(() => response.statusText);
+        throw new Error(`Nmap scan failed: ${errorText}`);
       }
 
-      // Setup WebSocket for real-time output streaming
-      const ws = new WebSocket(`${API_CONFIG.WS_URL}/stream/${sessionId}`);
-      this.wsConnections.set(sessionId, ws);
-
-      let fullOutput = '';
-
-      return new Promise((resolve, reject) => {
-        ws.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          
-          switch (data.type) {
-            case 'output':
-              fullOutput += data.content;
-              callback?.onOutput?.(data.content);
-              break;
-            case 'progress':
-              callback?.onProgress?.(data.progress);
-              break;
-            case 'complete':
-              resolve(fullOutput);
-              this.cleanup(sessionId);
-              callback?.onComplete?.(data.result);
-              break;
-            case 'error':
-              reject(new Error(data.message));
-              this.cleanup(sessionId);
-              callback?.onError?.(data.message);
-              break;
-          }
-        };
-
-        ws.onerror = () => {
-          reject(new Error('WebSocket connection failed'));
-          this.cleanup(sessionId);
-        };
-      });
+      console.log(`[Nmap] HTTP request successful, connecting WebSocket...`);
+      
+      // Use the robust streamResults method
+      return this.streamResults(sessionId, callback);
 
     } catch (error: any) {
+      console.error(`[Nmap] Error:`, error);
       this.cleanup(sessionId);
+      
+      // Check for privilege errors
+      if (error.message?.includes('permission') || error.message?.includes('privilege')) {
+        throw new Error('Nmap requires elevated privileges for this scan type. Try "basic" scan or run backend with sudo.');
+      }
+      
       throw error;
     }
   }
@@ -289,6 +267,7 @@ export class RealKaliToolsManager {
       let fullOutput = '';
       let resolved = false;
 
+      console.log(`[WS] Connecting to: ${API_CONFIG.WS_URL}/stream/${sessionId}`);
       const ws = new WebSocket(`${API_CONFIG.WS_URL}/stream/${sessionId}`);
       this.wsConnections.set(sessionId, ws);
 
@@ -296,19 +275,21 @@ export class RealKaliToolsManager {
       const timeout = setTimeout(() => {
         if (!resolved) {
           resolved = true;
+          console.error(`[WS] Connection timeout for session: ${sessionId}`);
           this.cleanup(sessionId);
-          reject(new Error('WebSocket connection timeout - ensure backend is running'));
+          reject(new Error('WebSocket connection timeout (30s). Ensure backend is running on localhost:8080'));
         }
       }, 30000); // 30 second timeout
 
       ws.onopen = () => {
-        console.log(`WebSocket connected for session: ${sessionId}`);
-        callback?.onOutput?.('Connected to scan server...\n');
+        console.log(`[WS] ✓ Connected: ${sessionId}`);
+        callback?.onOutput?.('● Connected to backend scan server...\n');
       };
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          console.log(`[WS] Message type: ${data.type}`);
           
           switch (data.type) {
             case 'output':
@@ -322,6 +303,7 @@ export class RealKaliToolsManager {
               if (!resolved) {
                 resolved = true;
                 clearTimeout(timeout);
+                console.log(`[WS] ✓ Scan complete: ${sessionId}`);
                 resolve(fullOutput);
                 this.cleanup(sessionId);
                 callback?.onComplete?.(data.result);
@@ -331,6 +313,7 @@ export class RealKaliToolsManager {
               if (!resolved) {
                 resolved = true;
                 clearTimeout(timeout);
+                console.error(`[WS] Scan error: ${data.message}`);
                 reject(new Error(data.message));
                 this.cleanup(sessionId);
                 callback?.onError?.(data.message);
@@ -338,28 +321,28 @@ export class RealKaliToolsManager {
               break;
           }
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          console.error('[WS] Error parsing message:', error);
           callback?.onError?.('Error parsing server response');
         }
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('[WS] Connection error:', error);
         if (!resolved) {
           resolved = true;
           clearTimeout(timeout);
-          reject(new Error('WebSocket connection failed - ensure backend is running on port 8080'));
+          reject(new Error('WebSocket connection failed. Ensure backend is running: cd server && node index.js'));
           this.cleanup(sessionId);
         }
       };
 
-      ws.onclose = () => {
-        console.log(`WebSocket closed for session: ${sessionId}`);
+      ws.onclose = (event) => {
+        console.log(`[WS] Connection closed: ${sessionId} (code: ${event.code})`);
         if (!resolved) {
           resolved = true;
           clearTimeout(timeout);
           this.cleanup(sessionId);
-          reject(new Error('Connection closed by server'));
+          reject(new Error(`Connection closed by server (code: ${event.code})`));
         }
       };
     });

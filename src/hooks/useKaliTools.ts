@@ -4,15 +4,40 @@ import { RealKaliToolsManager } from '@/utils/realKaliTools';
 import { ScanResult, ToolConfig, AutomatedScanConfig } from '@/utils/kaliTools';
 import { DEMO_OUTPUTS } from '@/config/apiConfig';
 
+const STORAGE_KEY = 'vapt-scan-history';
+
 export const useKaliTools = () => {
   const [isKaliEnvironment, setIsKaliEnvironment] = useState(false);
   const [installedTools, setInstalledTools] = useState<ToolConfig[]>([]);
-  const [activeSessions, setActiveSessions] = useState<ScanResult[]>([]);
+  const [activeSessions, setActiveSessions] = useState<ScanResult[]>(() => {
+    // Load from localStorage on init
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? JSON.parse(stored, (key, value) => {
+        // Parse Date objects
+        if (key === 'startTime' || key === 'endTime') {
+          return value ? new Date(value) : undefined;
+        }
+        return value;
+      }) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const { toast } = useToast();
 
   const toolsManager = RealKaliToolsManager.getInstance();
+
+  // Persist sessions to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(activeSessions));
+    } catch (error) {
+      console.error('Failed to save scan history:', error);
+    }
+  }, [activeSessions]);
 
   // Check if running in Kali Linux
   useEffect(() => {
@@ -649,6 +674,12 @@ export const useKaliTools = () => {
   // Clear session history
   const clearSessions = useCallback(() => {
     setActiveSessions([]);
+    toolsManager.stopAllScans();
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      console.error('Failed to clear scan history:', error);
+    }
   }, []);
 
   // Stop all running scans

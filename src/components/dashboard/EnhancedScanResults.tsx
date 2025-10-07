@@ -454,8 +454,14 @@ const EnhancedScanResults = () => {
                   {filteredSessions.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8">
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                           <Shield className="h-12 w-12 mx-auto text-muted-foreground" />
+                          <p className="text-muted-foreground">No scans yet. Start a scan from Target Input.</p>
+                          {!isKaliEnvironment && (
+                            <div className="text-sm text-orange-600 dark:text-orange-400">
+                              ⚠ Backend not connected. Start the server: <code className="px-2 py-1 bg-muted rounded">cd server && node index.js</code>
+                            </div>
+                          )}
                           <div>
                             <p className="text-lg font-medium mb-2">No Scan Results</p>
                             <p className="text-muted-foreground mb-4">
