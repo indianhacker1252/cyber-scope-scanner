@@ -171,10 +171,11 @@ const EnhancedScanResults = () => {
   const exportReport = async (format: 'html' | 'pdf' | 'json' | 'csv') => {
     setIsGeneratingReport(true);
     try {
+      // Generate comprehensive report with all scan data
       const report = await generateReport();
-      let content = report;
-      let mimeType = 'text/plain';
-      let extension = 'txt';
+      let content: string;
+      let mimeType: string;
+      let extension: string;
 
       switch (format) {
         case 'html':
@@ -183,7 +184,14 @@ const EnhancedScanResults = () => {
           extension = 'html';
           break;
         case 'json':
-          content = JSON.stringify(activeSessions, null, 2);
+          // Include full scan data with findings
+          const exportData = activeSessions.map(session => ({
+            ...session,
+            startTime: session.startTime?.toISOString(),
+            endTime: session.endTime?.toISOString(),
+            duration: session.endTime ? formatDuration(session.startTime, session.endTime) : 'In Progress'
+          }));
+          content = JSON.stringify(exportData, null, 2);
           mimeType = 'application/json';
           extension = 'json';
           break;
@@ -192,6 +200,20 @@ const EnhancedScanResults = () => {
           mimeType = 'text/csv';
           extension = 'csv';
           break;
+        case 'pdf':
+          // For now, export as HTML (PDF generation would require additional library)
+          content = convertToHTML(report);
+          mimeType = 'text/html';
+          extension = 'html';
+          toast({
+            title: "PDF Export",
+            description: "Exporting as HTML. Use browser 'Print to PDF' for PDF format.",
+          });
+          break;
+        default:
+          content = report;
+          mimeType = 'text/plain';
+          extension = 'txt';
       }
 
       const blob = new Blob([content], { type: mimeType });
@@ -199,17 +221,20 @@ const EnhancedScanResults = () => {
       const a = document.createElement('a');
       a.href = url;
       a.download = `security-report-${new Date().toISOString().split('T')[0]}.${extension}`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
       toast({
-        title: "Report Generated",
+        title: "Report Exported",
         description: `${format.toUpperCase()} report has been downloaded successfully.`
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Export error:', error);
       toast({
         title: "Export Failed",
-        description: "Failed to generate the report. Please try again.",
+        description: error.message || "Failed to generate the report. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -218,44 +243,149 @@ const EnhancedScanResults = () => {
   };
 
   const convertToHTML = (markdown: string) => {
+    // Create comprehensive HTML report with all scan details
+    const scansHTML = activeSessions.map(session => `
+      <div class="scan-entry">
+        <h3>${session.tool.toUpperCase()} - ${session.target}</h3>
+        <p><strong>Status:</strong> <span class="status-${session.status}">${session.status}</span></p>
+        <p><strong>Started:</strong> ${session.startTime?.toLocaleString() || 'N/A'}</p>
+        <p><strong>Duration:</strong> ${session.endTime ? formatDuration(session.startTime, session.endTime) : 'In Progress'}</p>
+        <p><strong>Findings:</strong> ${session.findings.length}</p>
+        ${session.findings.length > 0 ? `
+          <div class="findings">
+            <h4>Findings:</h4>
+            <ul>
+              ${session.findings.map((f: any) => `
+                <li class="severity-${f.severity}">
+                  <strong>[${f.severity?.toUpperCase() || 'INFO'}]</strong> ${f.title || f.description || 'Finding'}
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        <details>
+          <summary>View Full Output</summary>
+          <pre class="output">${session.output || 'No output available'}</pre>
+        </details>
+      </div>
+    `).join('');
+
     return `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Security Assessment Report</title>
+        <title>Security Assessment Report - ${new Date().toLocaleDateString()}</title>
+        <meta charset="UTF-8">
         <style>
-          body { font-family: Arial, sans-serif; margin: 40px; }
-          .header { border-bottom: 2px solid #333; padding-bottom: 20px; }
-          .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 20px 0; }
-          .stat-card { padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
-          .findings { margin: 20px 0; }
-          .severity-critical { color: #dc2626; }
-          .severity-high { color: #ea580c; }
-          .severity-medium { color: #ca8a04; }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; background: #f5f5f5; }
+          .container { max-width: 1200px; margin: 0 auto; background: white; padding: 40px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          .header { border-bottom: 3px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
+          .header h1 { margin: 0; color: #333; }
+          .header p { color: #666; margin: 10px 0 0 0; }
+          .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 30px 0; }
+          .stat-card { padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
+          .stat-card h3 { margin: 0; font-size: 14px; color: #666; text-transform: uppercase; }
+          .stat-card .value { font-size: 32px; font-weight: bold; margin: 10px 0; }
+          .scan-entry { margin: 30px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
+          .scan-entry h3 { margin: 0 0 15px 0; color: #333; }
+          .findings { margin: 15px 0; }
+          .findings ul { margin: 10px 0; padding-left: 20px; }
+          .findings li { margin: 8px 0; line-height: 1.6; }
+          .status-completed { color: #16a34a; font-weight: bold; }
+          .status-running { color: #2563eb; font-weight: bold; }
+          .status-failed { color: #dc2626; font-weight: bold; }
+          .severity-critical { color: #dc2626; font-weight: bold; }
+          .severity-high { color: #ea580c; font-weight: bold; }
+          .severity-medium { color: #ca8a04; font-weight: bold; }
           .severity-low { color: #2563eb; }
+          .severity-info { color: #6b7280; }
+          .output { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 12px; }
+          details { margin-top: 15px; }
+          summary { cursor: pointer; font-weight: bold; color: #2563eb; }
+          summary:hover { text-decoration: underline; }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>Security Assessment Report</h1>
-          <p>Generated on: ${new Date().toLocaleString()}</p>
+        <div class="container">
+          <div class="header">
+            <h1>🔒 Security Assessment Report</h1>
+            <p>Generated on: ${new Date().toLocaleString()}</p>
+            <p>Total Scans: ${stats.total} | Completed: ${stats.completed} | Running: ${stats.running} | Failed: ${stats.failed}</p>
+          </div>
+          
+          <div class="stats">
+            <div class="stat-card">
+              <h3>Total Findings</h3>
+              <div class="value">${stats.totalFindings}</div>
+            </div>
+            <div class="stat-card">
+              <h3>Critical</h3>
+              <div class="value" style="color: #dc2626;">${stats.critical}</div>
+            </div>
+            <div class="stat-card">
+              <h3>High</h3>
+              <div class="value" style="color: #ea580c;">${stats.high}</div>
+            </div>
+            <div class="stat-card">
+              <h3>Medium</h3>
+              <div class="value" style="color: #ca8a04;">${stats.medium}</div>
+            </div>
+            <div class="stat-card">
+              <h3>Low</h3>
+              <div class="value" style="color: #2563eb;">${stats.low}</div>
+            </div>
+          </div>
+          
+          <h2>Scan Results</h2>
+          ${scansHTML || '<p>No scan results available.</p>'}
+          
+          <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #ddd; color: #666; font-size: 12px;">
+            <p>This report was generated by the VAPT Security Assessment Tool</p>
+            <p>For questions or concerns, please contact your security team.</p>
+          </div>
         </div>
-        <pre>${markdown}</pre>
       </body>
       </html>
     `;
   };
 
   const convertToCSV = (sessions: any[]) => {
-    const headers = ['Timestamp', 'Target', 'Tool', 'Status', 'Findings', 'Duration'];
-    const rows = sessions.map(session => [
-      session.startTime?.toISOString() || '',
-      session.target,
-      session.tool,
-      session.status,
-      session.findings.length,
-      session.endTime ? formatDuration(session.startTime, session.endTime) : 'Running'
-    ]);
+    // Enhanced CSV with more details
+    const headers = [
+      'Timestamp', 
+      'Target', 
+      'Tool', 
+      'Status', 
+      'Total Findings', 
+      'Critical', 
+      'High', 
+      'Medium', 
+      'Low',
+      'Duration',
+      'Output Length'
+    ];
+    
+    const rows = sessions.map(session => {
+      const severityCounts = session.findings.reduce((acc: any, f: any) => {
+        const sev = f.severity || 'info';
+        acc[sev] = (acc[sev] || 0) + 1;
+        return acc;
+      }, {});
+      
+      return [
+        session.startTime?.toISOString() || 'N/A',
+        `"${session.target}"`,
+        session.tool,
+        session.status,
+        session.findings.length,
+        severityCounts.critical || 0,
+        severityCounts.high || 0,
+        severityCounts.medium || 0,
+        severityCounts.low || 0,
+        session.endTime ? formatDuration(session.startTime, session.endTime) : 'In Progress',
+        session.output?.length || 0
+      ];
+    });
     
     return [headers, ...rows].map(row => row.join(',')).join('\n');
   };
@@ -704,7 +834,7 @@ const EnhancedScanResults = () => {
           <Card>
             <CardHeader>
               <CardTitle>Live Scan Output</CardTitle>
-              <CardDescription>Real-time output from running scans</CardDescription>
+              <CardDescription>Real-time streaming output from running security scans</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -712,55 +842,101 @@ const EnhancedScanResults = () => {
                   const session = activeSessions.find(s => s.id === sessionId);
                   if (!session) return null;
                   
+                  const ToolIcon = getToolIcon(session.tool);
+                  
                   return (
-                    <div key={sessionId} className="border rounded-lg">
-                      <div className="p-3 bg-muted/50 border-b flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <Terminal className="h-4 w-4" />
-                          <span className="font-medium">{session.tool.toUpperCase()}</span>
-                          <span className="text-sm text-muted-foreground">{session.target}</span>
-                        </div>
-                        <Badge className={getStatusColor(session.status)}>
-                          {session.status}
-                        </Badge>
-                      </div>
-                      <div className="p-3">
-                        <ScrollArea className="h-40">
-                          <div className="font-mono text-xs space-y-1">
-                            {outputs.map((line, index) => (
-                              <div key={index} className="text-green-600 dark:text-green-400">
-                                {line}
+                    <div key={sessionId} className="border rounded-lg overflow-hidden">
+                      <div className="p-3 bg-muted/50 border-b">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center space-x-2">
+                            <ToolIcon className="h-4 w-4" />
+                            <span className="font-medium">{session.tool.toUpperCase()}</span>
+                            <span className="text-sm text-muted-foreground">{session.target}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {session.status === 'running' && (
+                              <div className="flex items-center space-x-1">
+                                <div className="animate-pulse h-2 w-2 bg-blue-500 rounded-full"></div>
+                                <span className="text-xs text-muted-foreground">Live</span>
                               </div>
-                            ))}
-                            {outputs.length === 0 && session.status === 'running' && (
-                              <div className="text-muted-foreground">Waiting for output...</div>
+                            )}
+                            <Badge className={getStatusColor(session.status)}>
+                              {session.status}
+                            </Badge>
+                          </div>
+                        </div>
+                        {session.progress > 0 && session.progress < 100 && (
+                          <div className="space-y-1">
+                            <Progress value={session.progress} className="h-1" />
+                            <span className="text-xs text-muted-foreground">{session.progress}% complete</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="bg-slate-950 p-4">
+                        <ScrollArea className="h-60">
+                          <div className="font-mono text-xs space-y-0.5">
+                            {outputs.length > 0 ? (
+                              outputs.map((line, index) => (
+                                <div key={index} className="text-green-400 whitespace-pre-wrap break-all">
+                                  {line}
+                                </div>
+                              ))
+                            ) : session.status === 'running' ? (
+                              <div className="text-cyan-400 animate-pulse">
+                                ● Initializing scan...
+                              </div>
+                            ) : (
+                              <div className="text-yellow-400">
+                                ⚠ No output captured
+                              </div>
+                            )}
+                            {session.status === 'running' && outputs.length > 0 && (
+                              <div className="text-cyan-400 animate-pulse mt-2">▌</div>
                             )}
                           </div>
                         </ScrollArea>
+                      </div>
+                      <div className="p-2 bg-muted/30 border-t flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Output lines: {outputs.length}</span>
+                        <span>Started: {session.startTime?.toLocaleTimeString() || 'N/A'}</span>
                       </div>
                     </div>
                   );
                 })}
                 
-                {Object.keys(liveOutput).length === 0 && (
+                {/* Running scans indicator */}
+                {activeSessions.filter(s => s.status === 'running').length > 0 && Object.keys(liveOutput).length === 0 && (
+                  <div className="text-center py-8">
+                    <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                    <p className="text-lg font-medium mb-2">Connecting to scan output...</p>
+                    <p className="text-muted-foreground">
+                      Waiting for output stream from {activeSessions.filter(s => s.status === 'running').length} running scan(s)
+                    </p>
+                  </div>
+                )}
+                
+                {Object.keys(liveOutput).length === 0 && activeSessions.filter(s => s.status === 'running').length === 0 && (
                   <div className="text-center py-8">
                     <Terminal className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                     <p className="text-lg font-medium mb-2">No Active Scans</p>
                     <p className="text-muted-foreground mb-4">
-                      Start a scan to see live output here
+                      Start a scan from Target Input to see live output here
                     </p>
                     {!isKaliEnvironment && (
-                      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mt-4">
+                      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mt-4 max-w-md mx-auto">
                         <div className="flex items-start space-x-2">
                           <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
                           <div className="text-left">
                             <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Backend Not Connected</h4>
                             <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                              Ensure the Kali Linux backend server is running on port 8080.
+                              Start the backend server to enable real-time scanning:
                             </p>
                             <code className="text-xs bg-yellow-100 dark:bg-yellow-900/50 px-2 py-1 rounded mt-2 block">
-                              cd server && npm start
+                              cd server && node index.js
                             </code>
+                            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+                              Then refresh this page and ensure API URL is set to http://localhost:8080 in Settings
+                            </p>
                           </div>
                         </div>
                       </div>

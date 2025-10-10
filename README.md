@@ -9,12 +9,12 @@ npm install
 node index.js
 ```
 
-### Terminal 2: Start Frontend (Port 5173)
+### Terminal 2: Start Frontend (Port 8080)
 ```bash
 npm run dev
 ```
 
-Access at: **http://localhost:5173**
+Access at: **http://localhost:8080**
 
 ---
 
@@ -82,10 +82,11 @@ Results persist across browser sessions (saved to localStorage).
 cd server && node index.js
 ```
 
-### ❌ WebSocket Timeout
-**Solution**: Check Settings → API Configuration
+### ❌ WebSocket Timeout (30s → 10min)
+**Solution**: Scans now have 10-minute timeout. Check Settings → API Configuration
 - Backend URL: `http://localhost:8080`
 - WebSocket URL: `ws://localhost:8080`
+- Long scans (Nikto, Amass) can take 5-10 minutes - be patient!
 
 ### ❌ Scan Starts But No Output
 1. Check **Diagnostics** - all should be PASS

@@ -271,15 +271,15 @@ export class RealKaliToolsManager {
       const ws = new WebSocket(`${API_CONFIG.WS_URL}/stream/${sessionId}`);
       this.wsConnections.set(sessionId, ws);
 
-      // Set timeout for WebSocket connection
+      // Set timeout for WebSocket connection (10 minutes for long scans)
       const timeout = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           console.error(`[WS] Connection timeout for session: ${sessionId}`);
           this.cleanup(sessionId);
-          reject(new Error('WebSocket connection timeout (30s). Ensure backend is running on localhost:8080'));
+          reject(new Error('WebSocket connection timeout (10min). Scan may be taking longer than expected.'));
         }
-      }, 30000); // 30 second timeout
+      }, 600000); // 10 minute timeout for long-running scans
 
       ws.onopen = () => {
         console.log(`[WS] ✓ Connected: ${sessionId}`);
