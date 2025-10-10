@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
   Search, 
   Download, 
@@ -32,10 +33,12 @@ import {
   TrendingUp,
   Calendar,
   Target,
-  Zap
+  Zap,
+  HelpCircle
 } from "lucide-react";
 import { useKaliTools } from "@/hooks/useKaliTools";
 import { useToast } from "@/components/ui/use-toast";
+import TroubleshootingHelper from "./TroubleshootingHelper";
 
 interface FilterState {
   target: string;
@@ -61,6 +64,8 @@ const EnhancedScanResults = () => {
   const [selectedScan, setSelectedScan] = useState<any>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [liveOutput, setLiveOutput] = useState<Record<string, string[]>>({});
+  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
+  const [troubleshootingType, setTroubleshootingType] = useState<'connection' | 'timeout' | 'privilege' | 'tool-missing' | 'scan-failed'>('connection');
 
   // Real-time output streaming from active sessions
   useEffect(() => {
@@ -401,6 +406,35 @@ const EnhancedScanResults = () => {
 
   return (
     <div className="space-y-6">
+      {/* Troubleshooting Helper */}
+      {showTroubleshooting && (
+        <TroubleshootingHelper 
+          errorType={troubleshootingType}
+          toolName="nmap"
+        />
+      )}
+
+      {/* Setup Guide Alert for Non-Connected Users */}
+      {!isKaliEnvironment && (
+        <Alert className="border-warning bg-warning/10">
+          <HelpCircle className="h-4 w-4" />
+          <AlertTitle>Need Help Getting Started?</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>Backend not connected. Click here for step-by-step setup instructions.</span>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => {
+                setTroubleshootingType('connection');
+                setShowTroubleshooting(true);
+              }}
+            >
+              Show Setup Guide
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Statistics Overview */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {/* Connection Status */}
@@ -489,6 +523,17 @@ const EnhancedScanResults = () => {
           </TabsList>
           
           <div className="flex items-center space-x-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                setTroubleshootingType('scan-failed');
+                setShowTroubleshooting(!showTroubleshooting);
+              }}
+            >
+              <HelpCircle className="h-4 w-4 mr-2" />
+              {showTroubleshooting ? 'Hide' : 'Help'}
+            </Button>
             <Button variant="outline" size="sm" onClick={handleClearResults}>
               <Trash2 className="h-4 w-4 mr-1" />
               Clear All

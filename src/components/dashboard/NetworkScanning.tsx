@@ -15,12 +15,19 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { useKaliTools } from "@/hooks/useKaliTools";
 
-const NetworkScanning = () => {
+interface NetworkScanningProps {
+  onNavigateToResults?: () => void;
+}
+
+const NetworkScanning = ({ onNavigateToResults }: NetworkScanningProps) => {
   const [targetRange, setTargetRange] = useState("");
+  const [scanType, setScanType] = useState("ping");
   const { toast } = useToast();
+  const { runNetworkScan } = useKaliTools();
 
-  const handleNetworkScan = () => {
+  const handleNetworkScan = async () => {
     if (!targetRange) {
       toast({
         title: "Error",
@@ -30,10 +37,24 @@ const NetworkScanning = () => {
       return;
     }
 
-    toast({
-      title: "Network Scan Started",
-      description: `Scanning network range: ${targetRange}`,
-    });
+    try {
+      await runNetworkScan(targetRange, scanType);
+      
+      toast({
+        title: "Network Scan Started",
+        description: `Scanning network range: ${targetRange}`,
+      });
+
+      if (onNavigateToResults) {
+        setTimeout(() => onNavigateToResults(), 1000);
+      }
+    } catch (error) {
+      toast({
+        title: "Scan Failed",
+        description: error instanceof Error ? error.message : "Failed to start network scan",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
@@ -71,7 +92,7 @@ const NetworkScanning = () => {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="scan-type">Scan Type</Label>
-                    <Select>
+                    <Select value={scanType} onValueChange={setScanType}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select scan type" />
                       </SelectTrigger>

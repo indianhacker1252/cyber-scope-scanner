@@ -21,7 +21,11 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const WebVulnerabilities = () => {
+interface WebVulnerabilitiesProps {
+  onNavigateToResults?: () => void;
+}
+
+const WebVulnerabilities = ({ onNavigateToResults }: WebVulnerabilitiesProps) => {
   const { toast } = useToast();
   const vulnerabilityTests = [
     {
@@ -267,18 +271,22 @@ const WebVulnerabilities = () => {
                                 {test.findings} vulnerabilities found
                               </span>
                               <div className="space-x-2">
-                                 <Button 
+                                  <Button 
                                    size="sm" 
                                    variant="outline"
                                    onClick={() => {
-                                     toast({
-                                       title: "Test Details",
-                                       description: `Viewing detailed results for ${test.name}`,
-                                     });
+                                     if (onNavigateToResults) {
+                                       onNavigateToResults();
+                                     } else {
+                                       toast({
+                                         title: "Test Details",
+                                         description: `Viewing detailed results for ${test.name}`,
+                                       });
+                                     }
                                    }}
                                  >
                                    <Eye className="h-4 w-4 mr-1" />
-                                   View Details
+                                   View Results
                                  </Button>
                                  {test.status === "running" ? (
                                    <Button 
@@ -378,11 +386,15 @@ const WebVulnerabilities = () => {
                               <span className="text-sm text-muted-foreground">
                                 {test.findings} vulnerabilities found
                               </span>
-                              <div className="space-x-2">
-                                <Button size="sm" variant="outline">
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  View Details
-                                </Button>
+                               <div className="space-x-2">
+                                 <Button 
+                                   size="sm" 
+                                   variant="outline"
+                                   onClick={() => onNavigateToResults && onNavigateToResults()}
+                                 >
+                                   <Eye className="h-4 w-4 mr-1" />
+                                   View Results
+                                 </Button>
                                 {test.status === "running" ? (
                                   <Button size="sm" variant="outline">
                                     <Pause className="h-4 w-4 mr-1" />
@@ -455,11 +467,15 @@ const WebVulnerabilities = () => {
                               <span className="text-sm text-muted-foreground">
                                 {test.findings} vulnerabilities found
                               </span>
-                              <div className="space-x-2">
-                                <Button size="sm" variant="outline">
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  View Details
-                                </Button>
+                               <div className="space-x-2">
+                                 <Button 
+                                   size="sm" 
+                                   variant="outline"
+                                   onClick={() => onNavigateToResults && onNavigateToResults()}
+                                 >
+                                   <Eye className="h-4 w-4 mr-1" />
+                                   View Results
+                                 </Button>
                                 {test.status === "running" ? (
                                   <Button size="sm" variant="outline">
                                     <Pause className="h-4 w-4 mr-1" />

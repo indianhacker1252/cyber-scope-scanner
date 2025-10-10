@@ -15,12 +15,18 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { useKaliTools } from "@/hooks/useKaliTools";
 
-const Reconnaissance = () => {
+interface ReconnaissanceProps {
+  onNavigateToResults?: () => void;
+}
+
+const Reconnaissance = ({ onNavigateToResults }: ReconnaissanceProps) => {
   const [domain, setDomain] = useState("");
   const { toast } = useToast();
+  const { runWebScan } = useKaliTools();
 
-  const handleDomainRecon = () => {
+  const handleDomainRecon = async () => {
     if (!domain) {
       toast({
         title: "Error",
@@ -30,10 +36,24 @@ const Reconnaissance = () => {
       return;
     }
 
-    toast({
-      title: "Reconnaissance Started",
-      description: `Starting OSINT gathering for ${domain}`,
-    });
+    try {
+      await runWebScan(domain);
+      
+      toast({
+        title: "Reconnaissance Started",
+        description: `Starting OSINT gathering for ${domain}`,
+      });
+
+      if (onNavigateToResults) {
+        setTimeout(() => onNavigateToResults(), 1000);
+      }
+    } catch (error) {
+      toast({
+        title: "Scan Failed",
+        description: error instanceof Error ? error.message : "Failed to start reconnaissance",
+        variant: "destructive"
+      });
+    }
   };
 
   return (

@@ -15,25 +15,47 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { useKaliTools } from "@/hooks/useKaliTools";
 
-const DatabaseTesting = () => {
-  const [connectionString, setConnectionString] = useState("");
+interface DatabaseTestingProps {
+  onNavigateToResults?: () => void;
+}
+
+const DatabaseTesting = ({ onNavigateToResults }: DatabaseTestingProps) => {
+  const [host, setHost] = useState("");
+  const [dbType, setDbType] = useState("mysql");
   const { toast } = useToast();
+  const { runNetworkScan } = useKaliTools();
 
-  const handleDatabaseTest = () => {
-    if (!connectionString) {
+  const handleDatabaseTest = async () => {
+    if (!host) {
       toast({
         title: "Error",
-        description: "Please provide database connection details",
+        description: "Please provide database host",
         variant: "destructive"
       });
       return;
     }
 
-    toast({
-      title: "Database Security Test Started",
-      description: "Analyzing database security configuration",
-    });
+    try {
+      // Use network scan with database port focus
+      await runNetworkScan(host, 'service');
+      
+      toast({
+        title: "Database Security Test Started",
+        description: "Analyzing database security configuration",
+      });
+
+      if (onNavigateToResults) {
+        setTimeout(() => onNavigateToResults(), 1000);
+      }
+    } catch (error) {
+      toast({
+        title: "Test Failed",
+        description: error instanceof Error ? error.message : "Failed to start database test",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
@@ -62,7 +84,7 @@ const DatabaseTesting = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="db-type">Database Type</Label>
-                    <Select>
+                    <Select value={dbType} onValueChange={setDbType}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select database type" />
                       </SelectTrigger>
@@ -81,6 +103,8 @@ const DatabaseTesting = () => {
                     <Input
                       id="host"
                       placeholder="localhost or IP address"
+                      value={host}
+                      onChange={(e) => setHost(e.target.value)}
                     />
                   </div>
                 </div>

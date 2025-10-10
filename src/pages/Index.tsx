@@ -25,6 +25,8 @@ import PentestGPT from "@/components/dashboard/PentestGPT";
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
 
+  const navigateToResults = () => setActiveSection("scan-results");
+
   const renderContent = () => {
     switch (activeSection) {
       case "dashboard":
@@ -36,11 +38,11 @@ const Index = () => {
       case "scan-results":
         return <EnhancedScanResults />;
       case "web-vulns":
-        return <WebVulnerabilities />;
+        return <WebVulnerabilities onNavigateToResults={navigateToResults} />;
       case "reconnaissance":
-        return <Reconnaissance />;
+        return <Reconnaissance onNavigateToResults={navigateToResults} />;
       case "network":
-        return <NetworkScanning />;
+        return <NetworkScanning onNavigateToResults={navigateToResults} />;
       case "mobile":
         return <MobileSecurity />;
       case "iot-security":
@@ -50,7 +52,7 @@ const Index = () => {
       case "code-analysis":
         return <CodeAnalysis />;
       case "database":
-        return <DatabaseTesting />;
+        return <DatabaseTesting onNavigateToResults={navigateToResults} />;
       case "exploits":
         return <ExploitTesting />;
       case "asset-exclusion":
