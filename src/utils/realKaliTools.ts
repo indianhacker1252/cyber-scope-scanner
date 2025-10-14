@@ -1,6 +1,6 @@
 // Real Kali Linux Tools Manager - Replaces the mocked version
 import { ScanResult, ToolConfig, AutomatedScanConfig } from './kaliTools';
-import { API_CONFIG, DEMO_OUTPUTS } from '@/config/apiConfig';
+import { API_CONFIG } from '@/config/apiConfig';
 
 interface StreamingCallback {
   onOutput?: (data: string) => void;

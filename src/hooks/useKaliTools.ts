@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { RealKaliToolsManager } from '@/utils/realKaliTools';
 import { ScanResult, ToolConfig, AutomatedScanConfig } from '@/utils/kaliTools';
-import { DEMO_OUTPUTS } from '@/config/apiConfig';
 
 const STORAGE_KEY = 'vapt-scan-history';
 
@@ -78,15 +77,6 @@ export const useKaliTools = () => {
     checkEnvironment();
   }, [toast]);
 
-  // Simulate demo scan with realistic output
-  const simulateDemoScan = (tool: string, target: string): Promise<string> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const demoOutput = DEMO_OUTPUTS[tool as keyof typeof DEMO_OUTPUTS] || [`Demo ${tool} scan output for ${target}`];
-        resolve(demoOutput.join('\n'));
-      }, 2000 + Math.random() * 3000); // Random delay between 2-5 seconds
-    });
-  };
 
   // Run network scan with real-time streaming
   const runNetworkScan = useCallback(async (target: string, scanType: string = 'basic') => {

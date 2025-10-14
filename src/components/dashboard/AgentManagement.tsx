@@ -1,341 +1,187 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useKaliTools } from "@/hooks/useKaliTools";
 import { 
-  Download, 
-  Key, 
-  Monitor, 
-  Trash2, 
-  RefreshCw, 
-  ExternalLink,
   Shield,
   Smartphone,
   Laptop,
   Computer,
-  Copy,
-  Plus
+  Network,
+  Terminal,
+  Activity,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Play,
+  X
 } from "lucide-react";
 
 interface Agent {
   id: string;
   name: string;
-  platform: 'windows' | 'macos' | 'android';
-  apiKey: string;
+  platform: 'windows' | 'linux' | 'android';
   status: 'online' | 'offline' | 'scanning';
   lastSeen: Date;
-  version: string;
   ipAddress: string;
   osVersion: string;
+  capabilities: string[];
+  currentScan?: string;
 }
 
-interface AgentFile {
-  platform: 'windows' | 'macos' | 'android';
-  filename: string;
-  description: string;
-  icon: typeof Computer;
+interface EndpointScanConfig {
+  agentId: string;
+  scanTypes: ('network' | 'os' | 'application' | 'vulnerability')[];
+  target: string;
 }
 
 const AgentManagement = () => {
   const { toast } = useToast();
+  const { runNetworkScan, runWebScan, runVulnerabilityScan, activeSessions, isKaliEnvironment } = useKaliTools();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [apiKeys, setApiKeys] = useState<string[]>([]);
-  const [newApiKeyName, setNewApiKeyName] = useState("");
-
-  const agentFiles: AgentFile[] = [
-    {
-      platform: 'windows',
-      filename: 'CyberScope-Agent-Windows.exe',
-      description: 'Windows endpoint security agent with full system access',
-      icon: Computer
-    },
-    {
-      platform: 'macos',
-      filename: 'CyberScope-Agent-macOS.dmg',
-      description: 'macOS endpoint security agent with system-level permissions',
-      icon: Laptop
-    },
-    {
-      platform: 'android',
-      filename: 'CyberScope-Agent-Android.apk',
-      description: 'Android security agent with root access capabilities',
-      icon: Smartphone
-    }
-  ];
+  const [scanConfig, setScanConfig] = useState<EndpointScanConfig>({
+    agentId: '',
+    scanTypes: ['network', 'os', 'application', 'vulnerability'],
+    target: ''
+  });
 
   useEffect(() => {
-    // Load existing agents and API keys from localStorage
-    const savedAgents = localStorage.getItem('cyberscope_agents');
-    const savedApiKeys = localStorage.getItem('cyberscope_api_keys');
-    
+    const savedAgents = localStorage.getItem('vapt_agents');
     if (savedAgents) {
-      setAgents(JSON.parse(savedAgents));
-    }
-    if (savedApiKeys) {
-      setApiKeys(JSON.parse(savedApiKeys));
+      const parsed = JSON.parse(savedAgents);
+      const agentsWithDates = parsed.map((agent: any) => ({
+        ...agent,
+        lastSeen: new Date(agent.lastSeen)
+      }));
+      setAgents(agentsWithDates);
     }
   }, []);
 
-  const generateApiKey = () => {
-    if (!newApiKeyName.trim()) {
+  useEffect(() => {
+    if (agents.length > 0) {
+      const agentsToSave = agents.map(agent => ({
+        ...agent,
+        lastSeen: agent.lastSeen.toISOString()
+      }));
+      localStorage.setItem('vapt_agents', JSON.stringify(agentsToSave));
+    }
+  }, [agents]);
+
+  const startEndpointScan = async (agent: Agent) => {
+    if (!isKaliEnvironment) {
       toast({
-        title: "Error",
-        description: "Please enter a name for the API key",
+        title: "Backend Required",
+        description: "Please ensure the Kali backend is running to perform endpoint scans",
         variant: "destructive"
       });
       return;
     }
 
-    const newKey = `cs_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-    const newApiKeys = [...apiKeys, newKey];
-    setApiKeys(newApiKeys);
-    localStorage.setItem('cyberscope_api_keys', JSON.stringify(newApiKeys));
-    setNewApiKeyName("");
-    
+    if (!scanConfig.target) {
+      setScanConfig(prev => ({ ...prev, target: agent.ipAddress }));
+    }
+
+    const target = scanConfig.target || agent.ipAddress;
+
+    // Update agent status
+    setAgents(prev => prev.map(a => 
+      a.id === agent.id ? { ...a, status: 'scanning', currentScan: 'Initializing...' } : a
+    ));
+
     toast({
-      title: "API Key Generated",
-      description: "New API key has been generated and saved"
+      title: "Endpoint Scan Started",
+      description: `Scanning ${agent.name} at ${target}`,
+    });
+
+    try {
+      // Network scan
+      if (scanConfig.scanTypes.includes('network')) {
+        setAgents(prev => prev.map(a => 
+          a.id === agent.id ? { ...a, currentScan: 'Network Scanning...' } : a
+        ));
+        await runNetworkScan(target, 'comprehensive');
+      }
+
+      // OS and service detection
+      if (scanConfig.scanTypes.includes('os')) {
+        setAgents(prev => prev.map(a => 
+          a.id === agent.id ? { ...a, currentScan: 'OS Detection...' } : a
+        ));
+        await runNetworkScan(target, 'service-detection');
+      }
+
+      // Web application scan
+      if (scanConfig.scanTypes.includes('application')) {
+        setAgents(prev => prev.map(a => 
+          a.id === agent.id ? { ...a, currentScan: 'Application Scanning...' } : a
+        ));
+        await runWebScan(target);
+      }
+
+      // Vulnerability assessment
+      if (scanConfig.scanTypes.includes('vulnerability')) {
+        setAgents(prev => prev.map(a => 
+          a.id === agent.id ? { ...a, currentScan: 'Vulnerability Assessment...' } : a
+        ));
+        await runVulnerabilityScan(target);
+      }
+
+      setAgents(prev => prev.map(a => 
+        a.id === agent.id ? { 
+          ...a, 
+          status: 'online', 
+          currentScan: undefined,
+          lastSeen: new Date()
+        } : a
+      ));
+
+      toast({
+        title: "Endpoint Scan Complete",
+        description: `Successfully scanned ${agent.name}`,
+      });
+    } catch (error) {
+      setAgents(prev => prev.map(a => 
+        a.id === agent.id ? { ...a, status: 'online', currentScan: undefined } : a
+      ));
+
+      toast({
+        title: "Scan Failed",
+        description: error instanceof Error ? error.message : "Failed to complete endpoint scan",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const addTestAgent = (platform: 'windows' | 'linux' | 'android') => {
+    const newAgent: Agent = {
+      id: `agent_${Date.now()}`,
+      name: `${platform.charAt(0).toUpperCase() + platform.slice(1)} Endpoint`,
+      platform,
+      status: 'online',
+      lastSeen: new Date(),
+      ipAddress: `192.168.1.${Math.floor(Math.random() * 200 + 10)}`,
+      osVersion: platform === 'windows' ? 'Windows 11 Pro' : 
+                 platform === 'linux' ? 'Ubuntu 22.04 LTS' : 'Android 13',
+      capabilities: ['network-scan', 'port-scan', 'vulnerability-scan', 'service-detection']
+    };
+
+    setAgents(prev => [...prev, newAgent]);
+    toast({
+      title: "Agent Added",
+      description: `${newAgent.name} has been registered`,
     });
   };
 
-  const downloadAgent = (agentFile: AgentFile) => {
-    // Create a mock agent file download
-    const agentContent = `#!/usr/bin/env python3
-# CyberScope Endpoint Security Agent - ${agentFile.platform.toUpperCase()}
-# This agent provides comprehensive endpoint security scanning and vulnerability assessment
-
-import os
-import sys
-import json
-import requests
-import platform
-import subprocess
-from datetime import datetime
-
-class CyberScopeAgent:
-    def __init__(self, api_key):
-        self.api_key = api_key
-        self.server_url = "https://your-cyberscope-server.com"
-        self.agent_version = "1.0.0"
-        self.platform = "${agentFile.platform}"
-        
-    def register_agent(self):
-        """Register this agent with the CyberScope server"""
-        payload = {
-            "platform": self.platform,
-            "version": self.agent_version,
-            "os_version": platform.platform(),
-            "hostname": platform.node(),
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        try:
-            response = requests.post(f"{self.server_url}/api/agents/register", 
-                                   json=payload, headers=headers)
-            return response.json()
-        except Exception as e:
-            print(f"Registration failed: {e}")
-            return None
-    
-    def perform_vulnerability_scan(self):
-        """Perform comprehensive vulnerability scanning"""
-        scan_results = {
-            "scan_id": f"scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            "timestamp": datetime.now().isoformat(),
-            "platform": self.platform,
-            "vulnerabilities": [],
-            "system_info": self.get_system_info(),
-            "network_info": self.get_network_info(),
-            "processes": self.get_running_processes(),
-            "services": self.get_services(),
-            "file_permissions": self.check_file_permissions(),
-            "registry_analysis": self.analyze_registry() if self.platform == "windows" else None
-        }
-        
-        # Add platform-specific scanning
-        if self.platform == "windows":
-            scan_results["windows_specific"] = self.windows_security_scan()
-        elif self.platform == "macos":
-            scan_results["macos_specific"] = self.macos_security_scan()
-        elif self.platform == "android":
-            scan_results["android_specific"] = self.android_security_scan()
-            
-        return scan_results
-    
-    def get_system_info(self):
-        """Get detailed system information"""
-        return {
-            "hostname": platform.node(),
-            "platform": platform.platform(),
-            "processor": platform.processor(),
-            "architecture": platform.architecture(),
-            "python_version": platform.python_version()
-        }
-    
-    def get_network_info(self):
-        """Get network configuration and open ports"""
-        # Implementation would include network scanning
-        return {"interfaces": [], "open_ports": [], "connections": []}
-    
-    def get_running_processes(self):
-        """Get list of running processes"""
-        # Implementation would include process enumeration
-        return []
-    
-    def get_services(self):
-        """Get system services information"""
-        # Implementation would include service enumeration
-        return []
-    
-    def check_file_permissions(self):
-        """Check critical file permissions"""
-        # Implementation would include permission analysis
-        return {}
-    
-    def analyze_registry(self):
-        """Windows registry analysis"""
-        # Windows-specific registry scanning
-        return {}
-    
-    def windows_security_scan(self):
-        """Windows-specific security scanning"""
-        return {
-            "windows_defender": "enabled",
-            "firewall_status": "enabled",
-            "uac_level": "default",
-            "installed_patches": [],
-            "vulnerable_services": []
-        }
-    
-    def macos_security_scan(self):
-        """macOS-specific security scanning"""
-        return {
-            "sip_status": "enabled",
-            "gatekeeper": "enabled",
-            "xprotect": "enabled",
-            "firewall": "enabled",
-            "installed_updates": []
-        }
-    
-    def android_security_scan(self):
-        """Android-specific security scanning"""
-        return {
-            "security_patch_level": "",
-            "root_detection": False,
-            "play_protect": "enabled",
-            "unknown_sources": False,
-            "installed_apps": []
-        }
-    
-    def send_results(self, scan_results):
-        """Send scan results to CyberScope server"""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        try:
-            response = requests.post(f"{self.server_url}/api/scans/submit",
-                                   json=scan_results, headers=headers)
-            return response.json()
-        except Exception as e:
-            print(f"Failed to send results: {e}")
-            return None
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python agent.py <API_KEY>")
-        sys.exit(1)
-        
-    api_key = sys.argv[1]
-    agent = CyberScopeAgent(api_key)
-    
-    # Register agent
-    registration = agent.register_agent()
-    if registration:
-        print("Agent registered successfully")
-        
-        # Perform vulnerability scan
-        print("Starting vulnerability scan...")
-        results = agent.perform_vulnerability_scan()
-        
-        # Send results
-        response = agent.send_results(results)
-        if response:
-            print("Scan results sent successfully")
-        else:
-            print("Failed to send scan results")
-    else:
-        print("Agent registration failed")
-`;
-
-    const blob = new Blob([agentContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = agentFile.filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
+  const removeAgent = (agentId: string) => {
+    setAgents(prev => prev.filter(a => a.id !== agentId));
     toast({
-      title: "Agent Downloaded",
-      description: `${agentFile.filename} has been downloaded`
-    });
-  };
-
-  const copyApiKey = (apiKey: string) => {
-    navigator.clipboard.writeText(apiKey);
-    toast({
-      title: "Copied",
-      description: "API key copied to clipboard"
-    });
-  };
-
-  const deleteApiKey = (apiKeyToDelete: string) => {
-    const updatedKeys = apiKeys.filter(key => key !== apiKeyToDelete);
-    setApiKeys(updatedKeys);
-    localStorage.setItem('cyberscope_api_keys', JSON.stringify(updatedKeys));
-    
-    toast({
-      title: "API Key Deleted",
-      description: "API key has been removed"
-    });
-  };
-
-  const remoteAccess = (agent: Agent) => {
-    toast({
-      title: "Remote Access",
-      description: `Initiating remote access to ${agent.name}...`
-    });
-  };
-
-  const updateAgent = (agent: Agent) => {
-    toast({
-      title: "Agent Update",
-      description: `Update command sent to ${agent.name}`
-    });
-  };
-
-  const deleteAgent = (agentId: string) => {
-    const updatedAgents = agents.filter(agent => agent.id !== agentId);
-    setAgents(updatedAgents);
-    localStorage.setItem('cyberscope_agents', JSON.stringify(updatedAgents));
-    
-    toast({
-      title: "Agent Deleted",
-      description: "Agent has been removed from monitoring"
+      title: "Agent Removed",
+      description: "Agent has been unregistered",
     });
   };
 
@@ -351,59 +197,54 @@ if __name__ == "__main__":
   const getPlatformIcon = (platform: string) => {
     switch (platform) {
       case 'windows': return Computer;
-      case 'macos': return Laptop;
+      case 'linux': return Terminal;
       case 'android': return Smartphone;
-      default: return Monitor;
+      default: return Laptop;
     }
+  };
+
+  const toggleScanType = (type: 'network' | 'os' | 'application' | 'vulnerability') => {
+    setScanConfig(prev => ({
+      ...prev,
+      scanTypes: prev.scanTypes.includes(type)
+        ? prev.scanTypes.filter(t => t !== type)
+        : [...prev.scanTypes, type]
+    }));
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Agent Management</h2>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button>
-              <Download className="h-4 w-4 mr-2" />
-              Download Agents
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Download Security Agents</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4">
-              {agentFiles.map((agentFile) => {
-                const Icon = agentFile.icon;
-                return (
-                  <Card key={agentFile.platform} className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <Icon className="h-8 w-8 text-primary" />
-                        <div>
-                          <h3 className="font-semibold">{agentFile.filename}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {agentFile.description}
-                          </p>
-                        </div>
-                      </div>
-                      <Button onClick={() => downloadAgent(agentFile)}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Download
-                      </Button>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          </DialogContent>
-        </Dialog>
+        <h2 className="text-3xl font-bold tracking-tight">Endpoint Security</h2>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => addTestAgent('windows')}>
+            <Computer className="h-4 w-4 mr-2" />
+            Add Windows
+          </Button>
+          <Button variant="outline" onClick={() => addTestAgent('linux')}>
+            <Terminal className="h-4 w-4 mr-2" />
+            Add Linux
+          </Button>
+          <Button variant="outline" onClick={() => addTestAgent('android')}>
+            <Smartphone className="h-4 w-4 mr-2" />
+            Add Android
+          </Button>
+        </div>
       </div>
+
+      {!isKaliEnvironment && (
+        <Card className="border-yellow-500">
+          <CardContent className="p-4 flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            <p className="text-sm">Backend not connected. Start the Kali backend to enable endpoint scanning.</p>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="endpoints" className="space-y-4">
         <TabsList>
           <TabsTrigger value="endpoints">Endpoints</TabsTrigger>
-          <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+          <TabsTrigger value="scanning">Active Scans</TabsTrigger>
         </TabsList>
 
         <TabsContent value="endpoints" className="space-y-4">
@@ -411,44 +252,10 @@ if __name__ == "__main__":
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Shield className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No Agents Connected</h3>
+                <h3 className="text-lg font-medium mb-2">No Endpoints Registered</h3>
                 <p className="text-muted-foreground text-center mb-4">
-                  Download and deploy agents to start monitoring endpoints
+                  Add endpoints to start comprehensive security testing
                 </p>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button>Download Agents</Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle>Download Security Agents</DialogTitle>
-                    </DialogHeader>
-                    <div className="grid gap-4">
-                      {agentFiles.map((agentFile) => {
-                        const Icon = agentFile.icon;
-                        return (
-                          <Card key={agentFile.platform} className="p-4">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-3">
-                                <Icon className="h-8 w-8 text-primary" />
-                                <div>
-                                  <h3 className="font-semibold">{agentFile.filename}</h3>
-                                  <p className="text-sm text-muted-foreground">
-                                    {agentFile.description}
-                                  </p>
-                                </div>
-                              </div>
-                              <Button onClick={() => downloadAgent(agentFile)}>
-                                <Download className="h-4 w-4 mr-2" />
-                                Download
-                              </Button>
-                            </div>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  </DialogContent>
-                </Dialog>
               </CardContent>
             </Card>
           ) : (
@@ -459,8 +266,8 @@ if __name__ == "__main__":
                   <Card key={agent.id}>
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <PlatformIcon className="h-6 w-6" />
+                        <div className="flex items-center gap-3">
+                          <PlatformIcon className="h-6 w-6 text-primary" />
                           <div>
                             <CardTitle className="text-lg">{agent.name}</CardTitle>
                             <p className="text-sm text-muted-foreground">
@@ -468,7 +275,7 @@ if __name__ == "__main__":
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center gap-2">
                           <Badge variant="outline" className="capitalize">
                             {agent.platform}
                           </Badge>
@@ -480,26 +287,86 @@ if __name__ == "__main__":
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm text-muted-foreground">
-                          Last seen: {agent.lastSeen.toLocaleString()} • Version: {agent.version}
+                      {agent.currentScan && (
+                        <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-center gap-2">
+                          <Activity className="h-4 w-4 text-yellow-500 animate-pulse" />
+                          <span className="text-sm font-medium">{agent.currentScan}</span>
                         </div>
-                        <div className="flex space-x-2">
-                          <Button size="sm" variant="outline" onClick={() => remoteAccess(agent)}>
-                            <ExternalLink className="h-4 w-4 mr-1" />
-                            Remote Access
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => updateAgent(agent)}>
-                            <RefreshCw className="h-4 w-4 mr-1" />
-                            Update
-                          </Button>
+                      )}
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-muted-foreground flex items-center gap-2">
+                          <Clock className="h-4 w-4" />
+                          Last seen: {agent.lastSeen.toLocaleString()}
+                        </div>
+                        <div className="flex gap-2">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button 
+                                size="sm" 
+                                disabled={agent.status === 'scanning'}
+                                onClick={() => {
+                                  setSelectedAgent(agent);
+                                  setScanConfig(prev => ({ ...prev, agentId: agent.id, target: agent.ipAddress }));
+                                }}
+                              >
+                                <Play className="h-4 w-4 mr-1" />
+                                Scan Endpoint
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Configure Endpoint Scan</DialogTitle>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div>
+                                  <label className="text-sm font-medium mb-2 block">Target IP</label>
+                                  <input
+                                    type="text"
+                                    className="w-full px-3 py-2 border rounded-md"
+                                    value={scanConfig.target}
+                                    onChange={(e) => setScanConfig(prev => ({ ...prev, target: e.target.value }))}
+                                    placeholder="192.168.1.100"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-sm font-medium mb-2 block">Scan Types</label>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {(['network', 'os', 'application', 'vulnerability'] as const).map(type => (
+                                      <Button
+                                        key={type}
+                                        variant={scanConfig.scanTypes.includes(type) ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={() => toggleScanType(type)}
+                                        className="justify-start capitalize"
+                                      >
+                                        {scanConfig.scanTypes.includes(type) ? (
+                                          <CheckCircle className="h-4 w-4 mr-2" />
+                                        ) : (
+                                          <Network className="h-4 w-4 mr-2" />
+                                        )}
+                                        {type}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <Button 
+                                  className="w-full" 
+                                  onClick={() => {
+                                    if (selectedAgent) startEndpointScan(selectedAgent);
+                                  }}
+                                >
+                                  Start Comprehensive Scan
+                                </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                           <Button 
                             size="sm" 
-                            variant="destructive" 
-                            onClick={() => deleteAgent(agent.id)}
+                            variant="outline"
+                            onClick={() => removeAgent(agent.id)}
                           >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Delete
+                            <X className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
@@ -511,66 +378,33 @@ if __name__ == "__main__":
           )}
         </TabsContent>
 
-        <TabsContent value="api-keys" className="space-y-4">
+        <TabsContent value="scanning" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Generate New API Key</CardTitle>
+              <CardTitle>Active Scans</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex space-x-2">
-                <Input
-                  placeholder="Enter API key name"
-                  value={newApiKeyName}
-                  onChange={(e) => setNewApiKeyName(e.target.value)}
-                />
-                <Button onClick={generateApiKey}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Generate
-                </Button>
-              </div>
+              {activeSessions.filter(s => s.status === 'running').length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No active scans</p>
+              ) : (
+                <div className="space-y-3">
+                  {activeSessions.filter(s => s.status === 'running').map(session => (
+                    <div key={session.id} className="p-3 border rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">{session.tool.toUpperCase()}</p>
+                          <p className="text-sm text-muted-foreground">{session.target}</p>
+                        </div>
+                        <Badge variant="outline" className="animate-pulse">
+                          {session.progress}%
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
-
-          <div className="grid gap-4">
-            {apiKeys.map((apiKey, index) => (
-              <Card key={index}>
-                <CardContent className="flex items-center justify-between p-4">
-                  <div className="flex items-center space-x-3">
-                    <Key className="h-5 w-5 text-primary" />
-                    <code className="bg-muted px-2 py-1 rounded text-sm">
-                      {apiKey.substring(0, 8)}...{apiKey.substring(apiKey.length - 8)}
-                    </code>
-                  </div>
-                  <div className="flex space-x-2">
-                    <Button size="sm" variant="outline" onClick={() => copyApiKey(apiKey)}>
-                      <Copy className="h-4 w-4 mr-1" />
-                      Copy
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="destructive" 
-                      onClick={() => deleteApiKey(apiKey)}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Delete
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {apiKeys.length === 0 && (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Key className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No API Keys</h3>
-                <p className="text-muted-foreground">
-                  Generate API keys to connect your security agents
-                </p>
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
       </Tabs>
     </div>

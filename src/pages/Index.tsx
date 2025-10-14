@@ -14,7 +14,6 @@ import CodeAnalysis from "@/components/dashboard/CodeAnalysis";
 import DatabaseTesting from "@/components/dashboard/DatabaseTesting";
 import ExploitTesting from "@/components/dashboard/ExploitTesting";
 import AssetExclusion from "@/components/dashboard/AssetExclusion";
-import AgentInstaller from "@/components/dashboard/AgentInstaller";
 import GitRepository from "@/components/dashboard/GitRepository";
 import Reports from "@/components/dashboard/Reports";
 import ToolManagement from "@/components/dashboard/ToolManagement";
@@ -57,8 +56,6 @@ const Index = () => {
         return <ExploitTesting />;
       case "asset-exclusion":
         return <AssetExclusion />;
-      case "agent-installer":
-        return <AgentInstaller />;
       case "git-repository":
         return <GitRepository />;
       case "agent-management":

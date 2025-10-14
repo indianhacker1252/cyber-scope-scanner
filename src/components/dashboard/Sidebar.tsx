@@ -43,7 +43,6 @@ const sections = [
     { id: "database", label: "Database Testing", icon: Database },
     { id: "exploits", label: "Exploit Testing", icon: Bug },
     { id: "asset-exclusion", label: "Asset Exclusion", icon: EyeOff },
-    { id: "agent-installer", label: "Agent Installer", icon: Download },
     { id: "git-repository", label: "Git Repository", icon: GitBranch },
     { id: "agent-management", label: "Agent Management", icon: Shield },
     { id: "vapt-reports", label: "VAPT Reports", icon: FileText },
