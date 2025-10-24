@@ -38,6 +38,9 @@ import {
 } from "lucide-react";
 import { useKaliTools } from "@/hooks/useKaliTools";
 import { useToast } from "@/components/ui/use-toast";
+import { ExaInsights } from "./ExaInsights";
+import { ScanModeSelector, ScanMode } from "./ScanModeSelector";
+import agentGenerator from "@/utils/agentGenerator";
 import TroubleshootingHelper from "./TroubleshootingHelper";
 
 interface FilterState {
@@ -66,6 +69,7 @@ const EnhancedScanResults = () => {
   const [liveOutput, setLiveOutput] = useState<Record<string, string[]>>({});
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const [troubleshootingType, setTroubleshootingType] = useState<'connection' | 'timeout' | 'privilege' | 'tool-missing' | 'scan-failed'>('connection');
+  const [scanMode, setScanMode] = useState<ScanMode>('passive');
 
   // Real-time output streaming from active sessions
   useEffect(() => {

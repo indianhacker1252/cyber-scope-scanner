@@ -57,94 +57,22 @@ const VAPTReports = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    // Generate sample VAPT reports
-    const sampleReports: VAPTReport[] = [
-      {
-        id: "vapt_001",
-        endpointName: "DESKTOP-WIN-001",
-        platform: "windows",
-        scanDate: new Date("2024-01-15"),
-        reportType: "vulnerability_assessment",
-        severity: "high",
-        vulnerabilitiesFound: 23,
-        status: "completed",
-        executiveSummary: "Comprehensive vulnerability assessment revealed 23 security issues across the Windows endpoint. Critical vulnerabilities include outdated system patches and misconfigured security settings. Immediate attention required for 5 high-severity findings.",
-        detailedFindings: [
-          {
-            title: "CVE-2024-0001 - Windows Kernel Privilege Escalation",
-            severity: "critical",
-            cvss: 9.8,
-            description: "A vulnerability in the Windows kernel allows local users to escalate privileges to SYSTEM level.",
-            impact: "Complete system compromise, unauthorized access to sensitive data",
-            remediation: "Apply Microsoft Security Update KB5034567 immediately"
-          },
-          {
-            title: "Weak Password Policy",
-            severity: "high",
-            cvss: 7.5,
-            description: "The current password policy allows weak passwords and doesn't enforce complexity requirements.",
-            impact: "Increased risk of credential-based attacks",
-            remediation: "Implement strong password policy with complexity requirements"
-          }
-        ],
-        complianceResults: [
-          { framework: "NIST Cybersecurity Framework", score: 72, passed: 156, failed: 44 },
-          { framework: "ISO 27001", score: 68, passed: 134, failed: 66 }
-        ]
-      },
-      {
-        id: "vapt_002",
-        endpointName: "MacBook-Pro-Dev",
-        platform: "macos",
-        scanDate: new Date("2024-01-12"),
-        reportType: "penetration_test",
-        severity: "medium",
-        vulnerabilitiesFound: 8,
-        status: "completed",
-        executiveSummary: "Penetration testing on macOS endpoint identified 8 security weaknesses. No critical vulnerabilities found, but several medium-risk issues require attention including outdated software and configuration weaknesses.",
-        detailedFindings: [
-          {
-            title: "Outdated Safari Browser",
-            severity: "medium",
-            cvss: 6.2,
-            description: "Safari browser is running an outdated version with known security vulnerabilities.",
-            impact: "Potential for web-based attacks and malicious code execution",
-            remediation: "Update Safari to the latest version"
-          }
-        ],
-        complianceResults: [
-          { framework: "NIST Cybersecurity Framework", score: 85, passed: 187, failed: 23 },
-          { framework: "SOC 2", score: 82, passed: 164, failed: 36 }
-        ]
-      },
-      {
-        id: "vapt_003",
-        endpointName: "Android-Device-HR",
-        platform: "android",
-        scanDate: new Date("2024-01-10"),
-        reportType: "compliance_audit",
-        severity: "low",
-        vulnerabilitiesFound: 3,
-        status: "completed",
-        executiveSummary: "Compliance audit of Android device shows good overall security posture with minimal issues. Device meets most security requirements with only minor configuration adjustments needed.",
-        detailedFindings: [
-          {
-            title: "USB Debugging Enabled",
-            severity: "low",
-            cvss: 3.2,
-            description: "USB debugging is enabled which could allow unauthorized access when connected to untrusted devices.",
-            impact: "Low risk of data extraction if device is compromised physically",
-            remediation: "Disable USB debugging in Developer Options"
-          }
-        ],
-        complianceResults: [
-          { framework: "GDPR", score: 92, passed: 184, failed: 16 },
-          { framework: "HIPAA", score: 88, passed: 176, failed: 24 }
-        ]
+    // Load actual scan reports from localStorage
+    const storedReports = localStorage.getItem('vapt_reports');
+    if (storedReports) {
+      try {
+        const parsed = JSON.parse(storedReports);
+        setReports(parsed.map((r: any) => ({
+          ...r,
+          scanDate: new Date(r.scanDate)
+        })));
+      } catch (error) {
+        console.error('Failed to load VAPT reports:', error);
+        setReports([]);
       }
-    ];
-
-    setReports(sampleReports);
+    } else {
+      setReports([]);
+    }
   }, []);
 
   const filteredReports = reports.filter(report => {

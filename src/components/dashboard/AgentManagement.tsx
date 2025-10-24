@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useKaliTools } from "@/hooks/useKaliTools";
+import agentGenerator from "@/utils/agentGenerator";
 import { 
   Shield,
   Smartphone,
@@ -18,7 +19,9 @@ import {
   CheckCircle,
   Clock,
   Play,
-  X
+  X,
+  Download,
+  Plus
 } from "lucide-react";
 
 interface Agent {
@@ -50,15 +53,22 @@ const AgentManagement = () => {
     target: ''
   });
 
+  // Load agents from localStorage on mount
   useEffect(() => {
-    const savedAgents = localStorage.getItem('vapt_agents');
-    if (savedAgents) {
-      const parsed = JSON.parse(savedAgents);
-      const agentsWithDates = parsed.map((agent: any) => ({
-        ...agent,
-        lastSeen: new Date(agent.lastSeen)
-      }));
-      setAgents(agentsWithDates);
+    const stored = localStorage.getItem('security_agents');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setAgents(parsed.map((a: any) => ({
+          ...a,
+          lastSeen: new Date(a.lastSeen)
+        })));
+      } catch (error) {
+        console.error('Failed to load agents:', error);
+        setAgents([]);
+      }
+    } else {
+      setAgents([]);
     }
   }, []);
 
