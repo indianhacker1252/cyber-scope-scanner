@@ -186,6 +186,81 @@ export class RealKaliToolsManager {
     }
   }
 
+  // Execute DNS Lookup
+  async runDNSLookup(domain: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `dns-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_DNS}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`DNS lookup failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Execute WHOIS Lookup
+  async runWhoisLookup(domain: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `whois-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_WHOIS}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`WHOIS lookup failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Execute SSL Certificate Analysis
+  async runSSLAnalysis(domain: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `ssl-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_SSL}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`SSL analysis failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
   // Execute Nuclei vulnerability scan
   async runNucleiScan(target: string, templates?: string, callback?: StreamingCallback): Promise<string> {
     const sessionId = `nuclei-${Date.now()}`;

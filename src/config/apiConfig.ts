@@ -1,11 +1,9 @@
-// API Configuration for VAPT Tool Backend (runtime configurable)
 export const API_CONFIG = {
   get BASE_URL() {
     try {
       const stored = localStorage.getItem('backend_url');
       if (stored && /^https?:\/\//i.test(stored)) return stored.replace(/\/$/, '');
     } catch {}
-    // Default to localhost for dev setups
     return 'http://localhost:8080';
   },
   get WS_URL() {
@@ -25,6 +23,9 @@ export const API_CONFIG = {
     SCAN_NUCLEI: '/api/scan/nuclei',
     SCAN_WHATWEB: '/api/scan/whatweb',
     SCAN_AMASS: '/api/scan/amass',
-    SCAN_SUBLIST3R: '/api/scan/sublist3r'
+    SCAN_SUBLIST3R: '/api/scan/sublist3r',
+    SCAN_DNS: '/api/scan/dns',
+    SCAN_WHOIS: '/api/scan/whois',
+    SCAN_SSL: '/api/scan/ssl'
   }
 };

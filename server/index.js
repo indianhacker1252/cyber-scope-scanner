@@ -180,9 +180,9 @@ app.post('/api/scan/nikto', async (req, res) => {
   }
 });
 
-// SQLMap scan endpoint
+// SQLMap scan endpoint with full automation
 app.post('/api/scan/sqlmap', async (req, res) => {
-  const { target, options, sessionId } = req.body;
+  const { target, options, sessionId, scanMode } = req.body;
   
   try {
     // Check if sqlmap is installed
@@ -190,7 +190,26 @@ app.post('/api/scan/sqlmap', async (req, res) => {
       return res.status(500).json({ error: 'SQLMap is not installed on this system' });
     }
 
-    const sqlmapArgs = ['-u', target, '--batch', '--random-agent'];
+    // Build automated SQLMap arguments
+    const sqlmapArgs = [
+      '-u', target,
+      '--batch',              // Never ask for user input
+      '--random-agent',       // Use random User-Agent
+      '--threads', '4',       // Faster scanning
+      '--timeout', '30',      // Request timeout
+      '--retries', '2',       // Retry failed requests
+      '--answers', 'crack=N,dict=N,continue=Y', // Auto-answer prompts
+      '--tamper', 'space2comment',  // Basic evasion
+      '-v', '3'               // Verbose output
+    ];
+
+    // Adjust parameters based on scan mode
+    if (scanMode === 'passive') {
+      sqlmapArgs.push('--level', '1', '--risk', '1', '--technique', 'E');
+    } else {
+      sqlmapArgs.push('--level', '2', '--risk', '2');
+    }
+
     if (options) {
       sqlmapArgs.push(...options.split(' '));
     }
@@ -198,6 +217,77 @@ app.post('/api/scan/sqlmap', async (req, res) => {
     console.log(`Starting SQLMap scan: sqlmap ${sqlmapArgs.join(' ')}`);
     
     const process = spawn('sqlmap', sqlmapArgs);
+    activeSessions.set(sessionId, process);
+    sessionOutputs.set(sessionId, '');
+
+    // Set timeout to prevent hanging (15 minutes)
+    const timeout = setTimeout(() => {
+      console.log(`SQLMap scan timeout for session ${sessionId}`);
+      if (process && !process.killed) {
+        process.kill('SIGTERM');
+        broadcastToSession(sessionId, {
+          type: 'output',
+          content: '\n[TIMEOUT] Scan exceeded maximum duration (15 minutes)\n'
+        });
+      }
+    }, 15 * 60 * 1000);
+
+    process.stdout.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.stderr.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.on('close', (code) => {
+      clearTimeout(timeout);
+      const fullOutput = sessionOutputs.get(sessionId) || '';
+      broadcastToSession(sessionId, {
+        type: 'complete',
+        result: {
+          id: sessionId,
+          tool: 'sqlmap',
+          target,
+          status: code === 0 ? 'completed' : 'failed',
+          output: fullOutput,
+          findings: parseSQLMapOutput(fullOutput)
+        }
+      });
+      activeSessions.delete(sessionId);
+      sessionOutputs.delete(sessionId);
+    });
+
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error('SQLMap scan error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DNS Lookup endpoint
+app.post('/api/scan/dns', async (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  try {
+    if (!domain) {
+      return res.status(400).json({ error: 'Domain is required' });
+    }
+
+    console.log(`Starting DNS lookup for: ${domain}`);
+    
+    const dnsArgs = [domain, 'ANY'];
+    const process = spawn('dig', dnsArgs);
     activeSessions.set(sessionId, process);
     sessionOutputs.set(sessionId, '');
 
@@ -225,11 +315,11 @@ app.post('/api/scan/sqlmap', async (req, res) => {
         type: 'complete',
         result: {
           id: sessionId,
-          tool: 'sqlmap',
-          target,
+          tool: 'dns',
+          target: domain,
           status: code === 0 ? 'completed' : 'failed',
           output: fullOutput,
-          findings: parseSQLMapOutput(fullOutput)
+          findings: parseDNSOutput(fullOutput)
         }
       });
       activeSessions.delete(sessionId);
@@ -238,7 +328,132 @@ app.post('/api/scan/sqlmap', async (req, res) => {
 
     res.json({ success: true, sessionId });
   } catch (error) {
-    console.error('SQLMap scan error:', error);
+    console.error('DNS lookup error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// WHOIS Lookup endpoint
+app.post('/api/scan/whois', async (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  try {
+    if (!domain) {
+      return res.status(400).json({ error: 'Domain is required' });
+    }
+
+    console.log(`Starting WHOIS lookup for: ${domain}`);
+    
+    const process = spawn('whois', [domain]);
+    activeSessions.set(sessionId, process);
+    sessionOutputs.set(sessionId, '');
+
+    process.stdout.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.stderr.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.on('close', (code) => {
+      const fullOutput = sessionOutputs.get(sessionId) || '';
+      broadcastToSession(sessionId, {
+        type: 'complete',
+        result: {
+          id: sessionId,
+          tool: 'whois',
+          target: domain,
+          status: code === 0 ? 'completed' : 'failed',
+          output: fullOutput,
+          findings: []
+        }
+      });
+      activeSessions.delete(sessionId);
+      sessionOutputs.delete(sessionId);
+    });
+
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error('WHOIS lookup error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SSL Certificate Analysis endpoint
+app.post('/api/scan/ssl', async (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  try {
+    if (!domain) {
+      return res.status(400).json({ error: 'Domain is required' });
+    }
+
+    console.log(`Starting SSL analysis for: ${domain}`);
+    
+    const process = spawn('openssl', ['s_client', '-connect', `${domain}:443`, '-servername', domain]);
+    activeSessions.set(sessionId, process);
+    sessionOutputs.set(sessionId, '');
+
+    // Send empty input and close stdin
+    process.stdin.write('\n');
+    process.stdin.end();
+
+    process.stdout.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.stderr.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.on('close', (code) => {
+      const fullOutput = sessionOutputs.get(sessionId) || '';
+      broadcastToSession(sessionId, {
+        type: 'complete',
+        result: {
+          id: sessionId,
+          tool: 'ssl',
+          target: domain,
+          status: 'completed',
+          output: fullOutput,
+          findings: parseSSLOutput(fullOutput)
+        }
+      });
+      activeSessions.delete(sessionId);
+      sessionOutputs.delete(sessionId);
+    });
+
+    // Timeout after 10 seconds
+    setTimeout(() => {
+      if (activeSessions.has(sessionId)) {
+        process.kill();
+      }
+    }, 10000);
+
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error('SSL analysis error:', error);
     res.status(500).json({ error: error.message });
   }
 });
