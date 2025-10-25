@@ -4,6 +4,7 @@ import Sidebar from "@/components/dashboard/Sidebar";
 import DashboardOverview from "@/components/dashboard/DashboardOverview";
 import TargetInput from "@/components/dashboard/TargetInput";
 import AdvancedScanning from "@/components/dashboard/AdvancedScanning";
+import AdvancedTools from "@/components/dashboard/AdvancedTools";
 import EnhancedScanResults from "@/components/dashboard/EnhancedScanResults";
 import WebVulnerabilities from "@/components/dashboard/WebVulnerabilities";
 import Reconnaissance from "@/components/dashboard/Reconnaissance";
@@ -34,6 +35,8 @@ const Index = () => {
         return <TargetInput onNavigateToResults={() => setActiveSection("scan-results")} />;
       case "advanced-scanning":
         return <AdvancedScanning />;
+      case "advanced-tools":
+        return <AdvancedTools />;
       case "scan-results":
         return <EnhancedScanResults />;
       case "web-vulns":

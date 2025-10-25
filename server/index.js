@@ -952,6 +952,300 @@ function parseSublist3rOutput(output) {
   return findings;
 }
 
+// ============================================================
+// ADVANCED TOOLS ENDPOINTS
+// ============================================================
+
+// Masscan - Ultra-fast port scanner
+app.post('/api/scan/masscan', (req, res) => {
+  const { target, ports = '1-65535', rate = '1000', sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  const masscanArgs = [
+    '-p', ports,
+    '--rate', rate,
+    target,
+    '--wait', '0',
+    '--open'
+  ];
+
+  spawnToolSession('masscan', masscanArgs, sessionId, res);
+});
+
+// Hydra - Password cracking
+app.post('/api/scan/hydra', (req, res) => {
+  const { target, service = 'ssh', username, passwordList, sessionId } = req.body;
+  
+  if (!target || !username) {
+    return res.status(400).json({ error: 'Target and username required' });
+  }
+
+  const hydraArgs = [
+    '-l', username,
+    '-P', passwordList || '/usr/share/wordlists/rockyou.txt',
+    service + '://' + target,
+    '-V',
+    '-f'
+  ];
+
+  spawnToolSession('hydra', hydraArgs, sessionId, res);
+});
+
+// WPScan - WordPress security scanner
+app.post('/api/scan/wpscan', (req, res) => {
+  const { target, apiToken, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  const wpscanArgs = [
+    '--url', target,
+    '--enumerate', 'vp,vt,u',
+    '--random-user-agent',
+    '--verbose'
+  ];
+
+  if (apiToken) {
+    wpscanArgs.push('--api-token', apiToken);
+  }
+
+  spawnToolSession('wpscan', wpscanArgs, sessionId, res);
+});
+
+// Enum4linux - SMB enumeration
+app.post('/api/scan/enum4linux', (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  const enum4linuxArgs = ['-a', target];
+  spawnToolSession('enum4linux', enum4linuxArgs, sessionId, res);
+});
+
+// theHarvester - OSINT tool
+app.post('/api/scan/theharvester', (req, res) => {
+  const { domain, sources = 'google,bing,duckduckgo', sessionId } = req.body;
+  
+  if (!domain) {
+    return res.status(400).json({ error: 'Domain is required' });
+  }
+
+  const harvesterArgs = [
+    '-d', domain,
+    '-b', sources,
+    '-l', '500'
+  ];
+
+  spawnToolSession('theHarvester', harvesterArgs, sessionId, res);
+});
+
+// SSLyze - SSL/TLS scanner
+app.post('/api/scan/sslyze', (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  const sslyzeArgs = ['--regular', target];
+  spawnToolSession('sslyze', sslyzeArgs, sessionId, res);
+});
+
+// Wafw00f - WAF detection
+app.post('/api/scan/wafw00f', (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  const wafArgs = [target, '-a'];
+  spawnToolSession('wafw00f', wafArgs, sessionId, res);
+});
+
+// Wapiti - Web vulnerability scanner
+app.post('/api/scan/wapiti', (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  const wapitiArgs = [
+    '-u', target,
+    '--flush-session',
+    '-v', '2',
+    '-m', 'all'
+  ];
+
+  spawnToolSession('wapiti', wapitiArgs, sessionId, res);
+});
+
+// Commix - Command injection tester
+app.post('/api/scan/commix', (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  const commixArgs = [
+    '--url', target,
+    '--batch',
+    '--all',
+    '-v', '1'
+  ];
+
+  spawnToolSession('commix', commixArgs, sessionId, res);
+});
+
+// XSStrike - XSS scanner
+app.post('/api/scan/xsstrike', (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  const xsstrikeArgs = [
+    '/usr/share/xsstrike/xsstrike.py',
+    '-u', target,
+    '--crawl',
+    '-v'
+  ];
+
+  spawnToolSession('python3', xsstrikeArgs, sessionId, res);
+});
+
+// Dnsenum - DNS enumeration
+app.post('/api/scan/dnsenum', (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  if (!domain) {
+    return res.status(400).json({ error: 'Domain is required' });
+  }
+
+  const dnsenumArgs = ['--enum', '--noreverse', domain];
+  spawnToolSession('dnsenum', dnsenumArgs, sessionId, res);
+});
+
+// Fierce - DNS reconnaissance
+app.post('/api/scan/fierce', (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  if (!domain) {
+    return res.status(400).json({ error: 'Domain is required' });
+  }
+
+  const fierceArgs = [
+    '--domain', domain,
+    '--subdomains', 'hosts',
+    '--traverse', '5'
+  ];
+
+  spawnToolSession('fierce', fierceArgs, sessionId, res);
+});
+
+// CrackMapExec - Network pentesting
+app.post('/api/scan/crackmapexec', (req, res) => {
+  const { target, protocol = 'smb', username, password, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  const cmexecArgs = [protocol, target];
+  
+  if (username && password) {
+    cmexecArgs.push('-u', username, '-p', password);
+  } else {
+    cmexecArgs.push('--gen-relay-list', 'relays.txt');
+  }
+
+  spawnToolSession('crackmapexec', cmexecArgs, sessionId, res);
+});
+
+// Metasploit - Exploitation framework
+app.post('/api/scan/metasploit', (req, res) => {
+  const { commands, sessionId } = req.body;
+  
+  if (!commands || !Array.isArray(commands)) {
+    return res.status(400).json({ error: 'Commands array is required' });
+  }
+
+  const fs = require('fs');
+  const resourceScript = commands.join('\n') + '\nexit\n';
+  const scriptPath = `/tmp/msf-${sessionId}.rc`;
+  
+  fs.writeFileSync(scriptPath, resourceScript);
+
+  const msfArgs = ['-q', '-r', scriptPath];
+  spawnToolSession('msfconsole', msfArgs, sessionId, res);
+});
+
+// John the Ripper - Password cracker
+app.post('/api/scan/john', (req, res) => {
+  const { hashFile, wordlist, format, sessionId } = req.body;
+  
+  if (!hashFile) {
+    return res.status(400).json({ error: 'Hash file is required' });
+  }
+
+  const johnArgs = [hashFile];
+  
+  if (wordlist) {
+    johnArgs.push('--wordlist=' + wordlist);
+  }
+  
+  if (format) {
+    johnArgs.push('--format=' + format);
+  }
+
+  spawnToolSession('john', johnArgs, sessionId, res);
+});
+
+// Hashcat - GPU password cracker
+app.post('/api/scan/hashcat', (req, res) => {
+  const { hashFile, wordlist, mode = '0', sessionId } = req.body;
+  
+  if (!hashFile) {
+    return res.status(400).json({ error: 'Hash file is required' });
+  }
+
+  const hashcatArgs = [
+    '-m', mode,
+    '-a', '0',
+    hashFile,
+    wordlist || '/usr/share/wordlists/rockyou.txt',
+    '--force'
+  ];
+
+  spawnToolSession('hashcat', hashcatArgs, sessionId, res);
+});
+
+// Recon-ng - Reconnaissance framework
+app.post('/api/scan/reconng', (req, res) => {
+  const { workspace, modules, target, sessionId } = req.body;
+  
+  if (!target || !modules) {
+    return res.status(400).json({ error: 'Target and modules required' });
+  }
+
+  const reconArgs = [
+    '-w', workspace || 'default',
+    '-m', modules,
+    '-x', `set SOURCE ${target}`
+  ];
+
+  spawnToolSession('recon-ng', reconArgs, sessionId, res);
+});
+
 // Start server
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {

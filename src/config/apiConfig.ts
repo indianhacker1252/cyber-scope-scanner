@@ -26,6 +26,24 @@ export const API_CONFIG = {
     SCAN_SUBLIST3R: '/api/scan/sublist3r',
     SCAN_DNS: '/api/scan/dns',
     SCAN_WHOIS: '/api/scan/whois',
-    SCAN_SSL: '/api/scan/ssl'
+    SCAN_SSL: '/api/scan/ssl',
+    // Advanced Tools
+    SCAN_MASSCAN: '/api/scan/masscan',
+    SCAN_HYDRA: '/api/scan/hydra',
+    SCAN_WPSCAN: '/api/scan/wpscan',
+    SCAN_ENUM4LINUX: '/api/scan/enum4linux',
+    SCAN_THEHARVESTER: '/api/scan/theharvester',
+    SCAN_SSLYZE: '/api/scan/sslyze',
+    SCAN_WAFW00F: '/api/scan/wafw00f',
+    SCAN_WAPITI: '/api/scan/wapiti',
+    SCAN_COMMIX: '/api/scan/commix',
+    SCAN_XSSTRIKE: '/api/scan/xsstrike',
+    SCAN_DNSENUM: '/api/scan/dnsenum',
+    SCAN_FIERCE: '/api/scan/fierce',
+    SCAN_CRACKMAPEXEC: '/api/scan/crackmapexec',
+    SCAN_METASPLOIT: '/api/scan/metasploit',
+    SCAN_JOHN: '/api/scan/john',
+    SCAN_HASHCAT: '/api/scan/hashcat',
+    SCAN_RECONNG: '/api/scan/reconng'
   }
 };

@@ -32,6 +32,7 @@ const sections = [
     { id: "dashboard", label: "Dashboard", icon: Activity },
     { id: "target", label: "Target Input", icon: Target },
     { id: "advanced-scanning", label: "Advanced Scanning", icon: Terminal },
+    { id: "advanced-tools", label: "Advanced Tools", icon: Shield },
     { id: "scan-results", label: "Scan Results", icon: FileText },
     { id: "reconnaissance", label: "Reconnaissance", icon: Search },
     { id: "web-vulns", label: "Web Vulnerabilities", icon: Globe },

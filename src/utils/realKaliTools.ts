@@ -475,6 +475,431 @@ export class RealKaliToolsManager {
     }
   }
 
+  // Advanced Tool: Masscan (Fast Port Scanner)
+  async runMasscanScan(target: string, ports: string = '1-65535', rate: string = '1000', callback?: StreamingCallback): Promise<string> {
+    const sessionId = `masscan-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_MASSCAN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, ports, rate, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Masscan scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: Hydra (Password Cracking)
+  async runHydraScan(target: string, service: string, username: string, passwordList?: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `hydra-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_HYDRA}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, service, username, passwordList, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Hydra scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: WPScan (WordPress Scanner)
+  async runWPScan(target: string, apiToken?: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `wpscan-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_WPSCAN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, apiToken, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`WPScan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: Enum4linux (SMB Enumeration)
+  async runEnum4linuxScan(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `enum4linux-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_ENUM4LINUX}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Enum4linux scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: theHarvester (OSINT)
+  async runTheHarvester(domain: string, sources?: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `theharvester-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_THEHARVESTER}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sources, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`theHarvester scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: SSLyze (SSL/TLS Analysis)
+  async runSSLyze(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `sslyze-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_SSLYZE}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`SSLyze scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: Wafw00f (WAF Detection)
+  async runWafw00f(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `wafw00f-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_WAFW00F}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Wafw00f scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: Wapiti (Web Vulnerability Scanner)
+  async runWapiti(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `wapiti-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_WAPITI}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Wapiti scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: Commix (Command Injection)
+  async runCommix(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `commix-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_COMMIX}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Commix scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: XSStrike (XSS Scanner)
+  async runXSStrike(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `xsstrike-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_XSSTRIKE}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`XSStrike scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: Dnsenum (DNS Enumeration)
+  async runDnsenum(domain: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `dnsenum-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_DNSENUM}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Dnsenum scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: Fierce (DNS Reconnaissance)
+  async runFierce(domain: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `fierce-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_FIERCE}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fierce scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: CrackMapExec (Network Pentesting)
+  async runCrackMapExec(target: string, protocol: string = 'smb', username?: string, password?: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `crackmapexec-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_CRACKMAPEXEC}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, protocol, username, password, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`CrackMapExec scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: Metasploit
+  async runMetasploit(commands: string[], callback?: StreamingCallback): Promise<string> {
+    const sessionId = `metasploit-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_METASPLOIT}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commands, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Metasploit failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: John the Ripper
+  async runJohn(hashFile: string, wordlist?: string, format?: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `john-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_JOHN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hashFile, wordlist, format, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`John scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: Hashcat
+  async runHashcat(hashFile: string, wordlist?: string, mode: string = '0', callback?: StreamingCallback): Promise<string> {
+    const sessionId = `hashcat-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_HASHCAT}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hashFile, wordlist, mode, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Hashcat scan failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Advanced Tool: Recon-ng
+  async runReconng(target: string, modules: string, workspace?: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `reconng-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_RECONNG}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, modules, workspace, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Recon-ng failed: ${response.statusText}`);
+      }
+
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
   // Run automated scan sequence (sequential to avoid system overload)
   async runAutomatedScan(config: AutomatedScanConfig): Promise<void> {
     const {
