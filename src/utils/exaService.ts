@@ -1,6 +1,6 @@
 import Exa from "exa-js";
 
-class ExaService {
+export default class ExaService {
   private client: Exa | null = null;
   private apiKey: string | null = null;
 
@@ -178,4 +178,3 @@ class ExaService {
   }
 }
 
-export default new ExaService();

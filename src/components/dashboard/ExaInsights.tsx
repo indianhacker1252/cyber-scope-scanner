@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Lightbulb, ExternalLink, Loader2, Settings } from "lucide-react";
-import exaService from "@/utils/exaService";
+import ExaService from "@/utils/exaService";
 import { useToast } from "@/hooks/use-toast";
 
 interface ExaInsightsProps {
@@ -19,7 +19,8 @@ interface ExaInsightsProps {
 
 export const ExaInsights = ({ scanData }: ExaInsightsProps) => {
   const { toast } = useToast();
-  const [apiKey, setApiKey] = useState(exaService.getApiKey() || "");
+  const exaService = new ExaService();
+  const [apiKey, setApiKeyState] = useState(exaService.getApiKey() || "");
   const [recommendations, setRecommendations] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showApiKeyInput, setShowApiKeyInput] = useState(!exaService.hasApiKey());
@@ -99,7 +100,7 @@ export const ExaInsights = ({ scanData }: ExaInsightsProps) => {
               type="password"
               placeholder="Enter your Exa.ai API key"
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(e) => setApiKeyState(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
               Get your API key from{" "}

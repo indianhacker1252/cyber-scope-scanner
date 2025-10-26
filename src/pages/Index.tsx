@@ -21,6 +21,7 @@ import ToolManagement from "@/components/dashboard/ToolManagement";
 import AgentManagement from "@/components/dashboard/AgentManagement";
 import VAPTReports from "@/components/dashboard/VAPTReports";
 import PentestGPT from "@/components/dashboard/PentestGPT";
+import { AutomatedVAPT } from "@/components/dashboard/AutomatedVAPT";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -51,6 +52,8 @@ const Index = () => {
         return <IoTSecurity />;
       case "pentestgpt":
         return <PentestGPT />;
+      case "automated-vapt":
+        return <AutomatedVAPT />;
       case "code-analysis":
         return <CodeAnalysis />;
       case "database":
