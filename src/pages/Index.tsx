@@ -1,6 +1,12 @@
+/**
+ * VAPT Security Scanner - Main Dashboard
+ * Copyright (c) 2024 Harsh Malik - All Rights Reserved
+ */
+
 import { useState } from "react";
 import Header from "@/components/dashboard/Header";
 import Sidebar from "@/components/dashboard/Sidebar";
+import { Copyright } from "@/components/dashboard/Copyright";
 import DashboardOverview from "@/components/dashboard/DashboardOverview";
 import TargetInput from "@/components/dashboard/TargetInput";
 import AdvancedScanning from "@/components/dashboard/AdvancedScanning";
@@ -86,6 +92,7 @@ const Index = () => {
           {renderContent()}
         </main>
       </div>
+      <Copyright />
     </div>
   );
 };

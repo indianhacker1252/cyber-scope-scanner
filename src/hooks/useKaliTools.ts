@@ -24,7 +24,6 @@ export const useKaliTools = () => {
     }
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [isDemoMode, setIsDemoMode] = useState(false);
   const { toast } = useToast();
 
   const toolsManager = RealKaliToolsManager.getInstance();
@@ -38,36 +37,45 @@ export const useKaliTools = () => {
     }
   }, [activeSessions]);
 
-  // Check if running in Kali Linux
+  // Check if running in Kali Linux - NO DEMO MODE ALLOWED
   useEffect(() => {
     const checkEnvironment = async () => {
       try {
+        console.log('[Environment Check] Starting backend connection check...');
         const isKali = await toolsManager.isKaliLinux();
         setIsKaliEnvironment(isKali);
         
         if (!isKali) {
-          setIsDemoMode(false); // Force disable demo mode
+          console.error('[Environment Check] NOT running on Kali Linux');
           toast({
-            title: "Backend Connection Failed",
-            description: "Unable to connect to Kali backend. Please ensure the backend server is running.",
-            variant: "destructive"
+            title: "⚠️ Not Running on Kali Linux",
+            description: "This tool requires Kali Linux environment. Backend reports non-Kali system.",
+            variant: "destructive",
+            duration: 10000
           });
         } else {
+          console.log('[Environment Check] ✓ Kali Linux detected');
           toast({
-            title: "Kali Linux Connected",
-            description: "Backend server connected successfully. Full tool functionality available.",
+            title: "✓ Kali Linux Connected",
+            description: "Backend server connected. All VAPT tools are operational.",
           });
         }
         
         const tools = await toolsManager.getInstalledTools();
+        console.log(`[Environment Check] ${tools.length} tools detected`);
         setInstalledTools(tools);
-      } catch (error) {
-        console.error('Failed to check environment:', error);
-        setIsDemoMode(false); // Force disable demo mode
+      } catch (error: any) {
+        console.error('[Environment Check] CRITICAL FAILURE:', {
+          error: error.message,
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        });
+        setIsKaliEnvironment(false);
         toast({
-          title: "Backend Connection Error",
-          description: "Failed to connect to backend server. Please check if the server is running on localhost:8080.",
-          variant: "destructive"
+          title: "❌ Backend Connection Failed",
+          description: `Cannot connect to backend server: ${error.message}. Start backend with: cd server && node index.js`,
+          variant: "destructive",
+          duration: 15000
         });
       } finally {
         setIsLoading(false);
@@ -768,7 +776,6 @@ export const useKaliTools = () => {
 
   return {
     isKaliEnvironment,
-    isDemoMode,
     installedTools,
     activeSessions,
     isLoading,

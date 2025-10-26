@@ -1,4 +1,17 @@
-// Real Kali Linux Tools Manager - Replaces the mocked version
+/**
+ * VAPT Security Scanner - Real Kali Linux Tools Manager
+ * 
+ * Copyright (c) 2024 Harsh Malik
+ * All Rights Reserved
+ * 
+ * This tool integrates with Kali Linux backend for real-time security scanning.
+ * NO MOCK DATA - All scans connect to actual Kali Linux tools.
+ * 
+ * @author Harsh Malik
+ * @version 2.0.0
+ */
+
+// Real Kali Linux Tools Manager - NO DEMO MODE
 import { ScanResult, ToolConfig, AutomatedScanConfig } from './kaliTools';
 import { API_CONFIG } from '@/config/apiConfig';
 
@@ -24,12 +37,26 @@ export class RealKaliToolsManager {
   // Check if we're actually in Kali Linux environment
   async isKaliLinux(): Promise<boolean> {
     try {
-      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CHECK_KALI}`);
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CHECK_KALI}`, {
+        signal: AbortSignal.timeout(5000) // 5 second timeout
+      });
+      
+      if (!response.ok) {
+        console.error(`[Backend Connection] HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`Backend server returned error: ${response.status} ${response.statusText}`);
+      }
+      
       const result = await response.json();
+      console.log(`[Backend Connection] Kali Linux detected: ${result.isKali}`);
       return result.isKali;
-    } catch {
-      console.warn('Backend not available - running in demo mode');
-      return false;
+    } catch (error: any) {
+      console.error('[Backend Connection] CRITICAL ERROR - Backend server unavailable:', {
+        message: error.message,
+        name: error.name,
+        timestamp: new Date().toISOString(),
+        endpoint: `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CHECK_KALI}`
+      });
+      throw new Error(`Backend connection failed: ${error.message}. Please ensure Node.js backend is running on localhost:8080`);
     }
   }
 

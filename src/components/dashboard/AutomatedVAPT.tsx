@@ -1,3 +1,16 @@
+/**
+ * AI-Powered Automated VAPT Tool
+ * 
+ * Copyright (c) 2024 Harsh Malik
+ * All Rights Reserved
+ * 
+ * Sequential vulnerability assessment and penetration testing with AI recommendations.
+ * Integrates real Kali Linux tools with Exa.ai intelligence for comprehensive security audits.
+ * 
+ * @author Harsh Malik
+ * @version 2.0.0
+ */
+
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
