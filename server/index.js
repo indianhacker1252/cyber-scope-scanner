@@ -977,19 +977,34 @@ app.post('/api/scan/masscan', (req, res) => {
 
 // Hydra - Password cracking
 app.post('/api/scan/hydra', (req, res) => {
-  const { target, service = 'ssh', username, passwordList, sessionId } = req.body;
+  const { target, service = 'ssh', usernameList, passwordList, sessionId } = req.body;
   
-  if (!target || !username) {
-    return res.status(400).json({ error: 'Target and username required' });
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
   }
 
-  const hydraArgs = [
-    '-l', username,
-    '-P', passwordList || '/usr/share/wordlists/rockyou.txt',
+  const hydraArgs = [];
+  
+  // Support both single username and username list
+  if (usernameList) {
+    hydraArgs.push('-L', usernameList);
+  } else {
+    hydraArgs.push('-l', 'admin'); // Default username if none provided
+  }
+  
+  // Support password list
+  if (passwordList) {
+    hydraArgs.push('-P', passwordList);
+  } else {
+    hydraArgs.push('-P', '/usr/share/wordlists/rockyou.txt');
+  }
+  
+  hydraArgs.push(
     service + '://' + target,
     '-V',
-    '-f'
-  ];
+    '-f',
+    '-t', '4'
+  );
 
   spawnToolSession('hydra', hydraArgs, sessionId, res);
 });
@@ -1132,6 +1147,147 @@ app.post('/api/scan/dnsenum', (req, res) => {
   }
 
   const dnsenumArgs = ['--enum', '--noreverse', domain];
+  spawnToolSession('dnsenum', dnsenumArgs, sessionId, res);
+});
+
+// Fierce - DNS reconnaissance
+app.post('/api/scan/fierce', (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  if (!domain) {
+    return res.status(400).json({ error: 'Domain is required' });
+  }
+
+  const fierceArgs = ['--domain', domain];
+  spawnToolSession('fierce', fierceArgs, sessionId, res);
+});
+
+// CrackMapExec - Network pentesting
+app.post('/api/scan/crackmapexec', (req, res) => {
+  const { target, protocol = 'smb', sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  const cmexecArgs = [protocol, target, '--shares'];
+  spawnToolSession('crackmapexec', cmexecArgs, sessionId, res);
+});
+
+// Metasploit - Exploitation framework
+app.post('/api/scan/metasploit', (req, res) => {
+  const { commands, sessionId } = req.body;
+  
+  if (!commands) {
+    return res.status(400).json({ error: 'Commands are required' });
+  }
+
+  const msfArgs = ['-q', '-x', commands];
+  spawnToolSession('msfconsole', msfArgs, sessionId, res);
+});
+
+// John the Ripper - Password cracking
+app.post('/api/scan/john', (req, res) => {
+  const { hashFile, wordlist, sessionId } = req.body;
+  
+  if (!hashFile) {
+    return res.status(400).json({ error: 'Hash file is required' });
+  }
+
+  const johnArgs = [
+    hashFile,
+    '--wordlist=' + (wordlist || '/usr/share/wordlists/rockyou.txt'),
+    '--format=raw-md5'
+  ];
+  spawnToolSession('john', johnArgs, sessionId, res);
+});
+
+// Hashcat - Advanced password recovery
+app.post('/api/scan/hashcat', (req, res) => {
+  const { hashFile, wordlist, attackMode = '0', hashType = '0', sessionId } = req.body;
+  
+  if (!hashFile) {
+    return res.status(400).json({ error: 'Hash file is required' });
+  }
+
+  const hashcatArgs = [
+    '-m', hashType,
+    '-a', attackMode,
+    hashFile,
+    wordlist || '/usr/share/wordlists/rockyou.txt',
+    '--force'
+  ];
+  spawnToolSession('hashcat', hashcatArgs, sessionId, res);
+});
+
+// Recon-ng - Reconnaissance framework
+app.post('/api/scan/reconng', (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  if (!domain) {
+    return res.status(400).json({ error: 'Domain is required' });
+  }
+
+  const reconArgs = ['-w', 'default', '-C', `add domains ${domain}; run`];
+  spawnToolSession('recon-ng', reconArgs, sessionId, res);
+});
+
+// Helper function to spawn tool sessions
+function spawnToolSession(tool, args, sessionId, res) {
+  try {
+    if (!checkTool(tool)) {
+      return res.status(500).json({ 
+        error: `${tool} is not installed on this system`,
+        installed: false 
+      });
+    }
+
+    console.log(`Starting ${tool}: ${tool} ${args.join(' ')}`);
+    
+    const process = spawn(tool, args);
+    activeSessions.set(sessionId, process);
+    sessionOutputs.set(sessionId, '');
+
+    process.stdout.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.stderr.on('data', (data) => {
+      const output = data.toString();
+      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
+      broadcastToSession(sessionId, {
+        type: 'output',
+        content: output
+      });
+    });
+
+    process.on('close', (code) => {
+      const fullOutput = sessionOutputs.get(sessionId) || '';
+      broadcastToSession(sessionId, {
+        type: 'complete',
+        result: {
+          id: sessionId,
+          tool,
+          status: code === 0 ? 'completed' : 'failed',
+          output: fullOutput,
+          exitCode: code
+        }
+      });
+      activeSessions.delete(sessionId);
+      sessionOutputs.delete(sessionId);
+    });
+
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error(`${tool} error:`, error);
+    res.status(500).json({ error: error.message });
+  }
+}
   spawnToolSession('dnsenum', dnsenumArgs, sessionId, res);
 });
 

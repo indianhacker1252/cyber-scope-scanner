@@ -34,7 +34,8 @@ import {
   CheckCircle,
   Clock,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Activity
 } from "lucide-react";
 
 interface VAPTPhase {
@@ -472,6 +473,12 @@ export const AutomatedVAPT = () => {
                             {phase.findings.length > 0 && (
                               <Badge variant="outline">{phase.findings.length} findings</Badge>
                             )}
+                            {phase.status === 'running' && (
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Activity className="h-3 w-3 animate-pulse" />
+                                Running...
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -483,11 +490,11 @@ export const AutomatedVAPT = () => {
                       <Progress value={phase.progress} className="mt-2" />
                     )}
                   </CardHeader>
-                  {(phase.status === 'running' || phase.status === 'completed') && (
+                  {(phase.status === 'running' || phase.status === 'completed' || phase.status === 'error') && phase.output && (
                     <CardContent>
                       {phase.output && (
                         <ScrollArea className="h-32 w-full rounded border bg-muted/50 p-3">
-                          <pre className="text-xs">{phase.output}</pre>
+                          <pre className="text-xs whitespace-pre-wrap">{phase.output}</pre>
                         </ScrollArea>
                       )}
                       {phase.aiRecommendations && phase.aiRecommendations.length > 0 && (

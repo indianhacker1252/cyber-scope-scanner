@@ -28,6 +28,7 @@ import AgentManagement from "@/components/dashboard/AgentManagement";
 import VAPTReports from "@/components/dashboard/VAPTReports";
 import PentestGPT from "@/components/dashboard/PentestGPT";
 import { AutomatedVAPT } from "@/components/dashboard/AutomatedVAPT";
+import { ExaInsights } from "@/components/dashboard/ExaInsights";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -60,6 +61,8 @@ const Index = () => {
         return <PentestGPT />;
       case "automated-vapt":
         return <AutomatedVAPT />;
+      case "exa-insights":
+        return <ExaInsights />;
       case "code-analysis":
         return <CodeAnalysis />;
       case "database":

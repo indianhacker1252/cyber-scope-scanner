@@ -38,7 +38,8 @@ export default function AdvancedTools() {
   
   const [hydraTarget, setHydraTarget] = useState('');
   const [hydraService, setHydraService] = useState('ssh');
-  const [hydraUsername, setHydraUsername] = useState('');
+  const [hydraUsernameList, setHydraUsernameList] = useState('');
+  const [hydraPasswordList, setHydraPasswordList] = useState('');
   
   const [wpscanTarget, setWpscanTarget] = useState('');
   const [wpscanApiToken, setWpscanApiToken] = useState('');
@@ -756,20 +757,28 @@ export default function AdvancedTools() {
                     </Select>
                   </div>
                   <div>
-                    <Label>Username</Label>
+                    <Label>Username List File</Label>
                     <Input 
-                      placeholder="admin" 
-                      value={hydraUsername}
-                      onChange={(e) => setHydraUsername(e.target.value)}
+                      placeholder="/usr/share/wordlists/metasploit/unix_users.txt" 
+                      value={hydraUsernameList}
+                      onChange={(e) => setHydraUsernameList(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Password List File</Label>
+                    <Input 
+                      placeholder="/usr/share/wordlists/rockyou.txt" 
+                      value={hydraPasswordList}
+                      onChange={(e) => setHydraPasswordList(e.target.value)}
                     />
                   </div>
                 </div>
 
                 <Button 
                   onClick={() => handleToolRun('hydra', () => 
-                    toolsManager.runHydraScan(hydraTarget, hydraService, hydraUsername)
+                    toolsManager.runHydraScan(hydraTarget, hydraService, hydraUsernameList, hydraPasswordList)
                   )}
-                  disabled={!hydraTarget || !hydraUsername || isRunning.hydra}
+                  disabled={!hydraTarget || isRunning.hydra}
                   variant="destructive"
                 >
                   {isRunning.hydra ? 'Cracking...' : 'Start Hydra Attack'}

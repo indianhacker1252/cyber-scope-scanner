@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from "@/hooks/use-toast";
 import { useKaliTools } from "@/hooks/useKaliTools";
 import agentGenerator from "@/utils/agentGenerator";
+import { API_CONFIG } from "@/config/apiConfig";
 import { 
   Shield,
   Smartphone,
@@ -227,17 +228,63 @@ const AgentManagement = () => {
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Endpoint Security</h2>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => addTestAgent('windows')}>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              agentGenerator.downloadAgent({
+                platform: 'windows',
+                serverUrl: API_CONFIG.BASE_URL || 'http://localhost:8080',
+                agentId: `agent_windows_${Date.now()}`,
+                scanOptions: ['network', 'os', 'application', 'vulnerability']
+              });
+              toast({
+                title: "Agent Downloaded",
+                description: "Windows agent file has been downloaded. Run it on target systems to enable remote scanning.",
+              });
+            }}
+          >
             <Computer className="h-4 w-4 mr-2" />
-            Add Windows
+            Download Windows Agent
           </Button>
-          <Button variant="outline" onClick={() => addTestAgent('linux')}>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              agentGenerator.downloadAgent({
+                platform: 'linux',
+                serverUrl: API_CONFIG.BASE_URL || 'http://localhost:8080',
+                agentId: `agent_linux_${Date.now()}`,
+                scanOptions: ['network', 'os', 'application', 'vulnerability']
+              });
+              toast({
+                title: "Agent Downloaded",
+                description: "Linux agent file has been downloaded. Run it on target systems to enable remote scanning.",
+              });
+            }}
+          >
             <Terminal className="h-4 w-4 mr-2" />
-            Add Linux
+            Download Linux Agent
           </Button>
-          <Button variant="outline" onClick={() => addTestAgent('android')}>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              agentGenerator.downloadAgent({
+                platform: 'android',
+                serverUrl: API_CONFIG.BASE_URL || 'http://localhost:8080',
+                agentId: `agent_android_${Date.now()}`,
+                scanOptions: ['network', 'os', 'application', 'vulnerability']
+              });
+              toast({
+                title: "Agent Downloaded",
+                description: "Android agent file has been downloaded. Deploy it on target devices to enable remote scanning.",
+              });
+            }}
+          >
             <Smartphone className="h-4 w-4 mr-2" />
-            Add Android
+            Download Android Agent
+          </Button>
+          <Button onClick={() => addTestAgent('windows')}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Test Endpoint
           </Button>
         </div>
       </div>

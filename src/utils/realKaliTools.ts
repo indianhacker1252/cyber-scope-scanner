@@ -528,7 +528,7 @@ export class RealKaliToolsManager {
   }
 
   // Advanced Tool: Hydra (Password Cracking)
-  async runHydraScan(target: string, service: string, username: string, passwordList?: string, callback?: StreamingCallback): Promise<string> {
+  async runHydraScan(target: string, service: string, usernameList?: string, passwordList?: string, callback?: StreamingCallback): Promise<string> {
     const sessionId = `hydra-${Date.now()}`;
     const controller = new AbortController();
     this.activeSessions.set(sessionId, controller);
@@ -537,7 +537,7 @@ export class RealKaliToolsManager {
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_HYDRA}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target, service, username, passwordList, sessionId }),
+        body: JSON.stringify({ target, service, usernameList, passwordList, sessionId }),
         signal: controller.signal
       });
 

@@ -17,7 +17,8 @@ import {
   Wifi,
   EyeOff,
   Download,
-  GitBranch
+  GitBranch,
+  Lightbulb
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ const sections = [
     { id: "iot-security", label: "IoT Security", icon: Wifi },
       { id: "pentestgpt", label: "PentestGPT", icon: Brain },
       { id: "automated-vapt", label: "AI Auto-VAPT", icon: Shield },
+      { id: "exa-insights", label: "Exa.ai Insights", icon: Lightbulb },
       { id: "code-analysis", label: "Code Analysis", icon: Code },
     { id: "database", label: "Database Testing", icon: Database },
     { id: "exploits", label: "Exploit Testing", icon: Bug },
