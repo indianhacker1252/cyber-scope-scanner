@@ -38,6 +38,23 @@ declare -a TOOLS=(
     "curl"
     "wget"
     "git"
+    "metasploit-framework"
+    "zaproxy"
+    "burpsuite"
+    "wireshark"
+    "aircrack-ng"
+    "hashid"
+    "binwalk"
+    "foremost"
+    "exiftool"
+    "steghide"
+    "volatility3"
+    "sslyze"
+    "testssl.sh"
+    "dnsrecon"
+    "fierce"
+    "theHarvester"
+    "spiderfoot"
 )
 
 # Install tools
@@ -79,18 +96,52 @@ sudo setcap cap_net_raw+ep /usr/bin/masscan 2>/dev/null || true
 # Install Node.js if not present
 if ! command -v node &> /dev/null; then
     echo "📦 Installing Node.js..."
-    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
     sudo apt install -y nodejs
 fi
+
+# Install Go if not present (needed for some tools)
+if ! command -v go &> /dev/null; then
+    echo "📦 Installing Go..."
+    wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
+    sudo rm -rf /usr/local/go
+    sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
+    rm go1.21.0.linux-amd64.tar.gz
+    echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+    export PATH=$PATH:/usr/local/go/bin
+fi
+
+# Install Python3 and pip
+echo "📦 Installing Python dependencies..."
+sudo apt install -y python3 python3-pip python3-venv
+
+# Install subfinder and other Go tools
+if command -v go &> /dev/null; then
+    echo "🔧 Installing Go-based security tools..."
+    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+    go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+    go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
+fi
+
+# Install npm packages for backend
+echo "📦 Installing backend dependencies..."
+cd server 2>/dev/null || mkdir -p server
+npm install express cors ws
+cd ..
+
+# Install frontend dependencies
+echo "📦 Installing frontend dependencies..."
+npm install
 
 echo ""
 echo "✅ Installation complete!"
 echo ""
 echo "🚀 Next steps:"
-echo "   1. npm install"
-echo "   2. npm run dev"
-echo "   3. Open http://localhost:8080"
+echo "   1. Run ./start-vapt.sh to start the tool"
+echo "   2. Open http://localhost:5173 in your browser"
+echo "   3. Default login: username 'kali', password 'kali'"
 echo ""
-echo "📖 Read KALI_DEPLOYMENT_GUIDE.md for detailed instructions"
+echo "📖 Read ADMIN_GUIDE.md and USER_GUIDE.md for detailed instructions"
 echo ""
 echo "⚠️  Legal Notice: Only use on authorized targets!"
+echo "© 2024 Harsh Malik - All Rights Reserved"
