@@ -3,8 +3,6 @@
 # CyberScope Scanner - Kali Linux Tools Installation Script
 # This script installs and configures essential security tools
 
-set -e
-
 echo "🔧 CyberScope Scanner - Kali Linux Setup"
 echo "========================================="
 
@@ -14,6 +12,15 @@ if [[ $EUID -eq 0 ]]; then
    echo "   Run: chmod +x install-kali-tools.sh && ./install-kali-tools.sh"
    exit 1
 fi
+
+# Function to handle errors gracefully
+handle_error() {
+    echo "⚠️  Warning: $1 (continuing...)"
+}
+
+# Stop on critical errors only
+set -e
+trap 'handle_error "An error occurred"' ERR
 
 # Update package lists
 echo "📦 Updating package lists..."
@@ -123,15 +130,35 @@ if command -v go &> /dev/null; then
     go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
 fi
 
+# Fix npm installation issues common on Kali Linux
+echo "🔧 Preparing npm environment..."
+chmod +x fix-npm.sh 2>/dev/null || true
+
+# Clean any existing problematic installations
+echo "🧹 Cleaning previous npm installations..."
+rm -rf node_modules package-lock.json 2>/dev/null || sudo rm -rf node_modules package-lock.json
+npm cache clean --force 2>/dev/null || sudo npm cache clean --force
+
+# Fix permissions
+current_user=$(whoami)
+sudo chown -R $current_user:$current_user . 2>/dev/null || true
+
 # Install npm packages for backend
 echo "📦 Installing backend dependencies..."
 cd server 2>/dev/null || mkdir -p server
-npm install express cors ws
+rm -rf node_modules package-lock.json 2>/dev/null || true
+npm install --legacy-peer-deps express cors ws || {
+    echo "⚠️  Backend install failed, trying with sudo..."
+    sudo npm install --legacy-peer-deps express cors ws
+}
 cd ..
 
 # Install frontend dependencies
 echo "📦 Installing frontend dependencies..."
-npm install
+npm install --legacy-peer-deps --no-optional || {
+    echo "⚠️  Frontend install failed, running fix script..."
+    ./fix-npm.sh
+}
 
 echo ""
 echo "✅ Installation complete!"

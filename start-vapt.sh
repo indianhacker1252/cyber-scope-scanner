@@ -13,8 +13,18 @@ fi
 # Check if Node.js is installed
 if ! command -v node &> /dev/null; then
     echo "❌ Node.js not found. Installing..."
-    apt update && apt install -y nodejs npm
+    sudo apt update && sudo apt install -y nodejs npm
 fi
+
+# Check if node_modules exists, if not run installation
+if [ ! -d "node_modules" ] || [ ! -d "server/node_modules" ]; then
+    echo "📦 Dependencies not found. Running installation..."
+    ./fix-npm.sh
+fi
+
+# Fix permissions before starting
+current_user=$(whoami)
+sudo chown -R $current_user:$current_user . 2>/dev/null || true
 
 # Install backend dependencies
 echo "📦 Installing backend dependencies..."

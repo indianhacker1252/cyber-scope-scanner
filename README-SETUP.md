@@ -1,35 +1,62 @@
-# VAPT Tool - Complete Setup Guide
+# CyberScope Scanner - Complete Setup Guide
 
 ## 🚀 Quick Start (Kali Linux)
 
-### Method 1: Automatic Setup
+### Method 1: Full Automatic Installation (Recommended)
+```bash
+chmod +x *.sh
+./install-kali-tools.sh
+./start-vapt.sh
+```
+
+### Method 2: Quick Start (If already installed)
 ```bash
 chmod +x start-vapt.sh
 ./start-vapt.sh
 ```
 
-### Method 2: Manual Setup
+### Method 3: Manual Setup
 
 1. **Install Node.js** (if not installed):
 ```bash
 sudo apt update && sudo apt install -y nodejs npm
 ```
 
-2. **Install Backend Dependencies**:
+2. **Fix npm issues** (if you encounter ENOTEMPTY errors):
+```bash
+chmod +x fix-npm.sh
+./fix-npm.sh
+```
+
+3. **Install Backend Dependencies**:
 ```bash
 cd server
-npm install
+npm install --legacy-peer-deps
+cd ..
 ```
 
-3. **Start Backend Server**:
+4. **Install Frontend Dependencies**:
 ```bash
-node index.js
+npm install --legacy-peer-deps --no-optional
 ```
 
-4. **Start Frontend** (in new terminal):
+5. **Start Backend Server**:
+```bash
+cd server
+node index.js &
+cd ..
+```
+
+6. **Start Frontend**:
 ```bash
 npm run dev
 ```
+
+## 🔐 Default Login Credentials
+- **Username**: `kali`
+- **Password**: `kali`
+
+⚠️ **Important**: Change the default password after first login via the Profile button!
 
 ## 🔧 Tool Configuration
 
@@ -103,10 +130,62 @@ sudo apt install wordlists
 
 ## 🐞 Troubleshooting
 
+### npm install Fails with ENOTEMPTY Error
+
+This is the most common issue on Kali Linux. Run the fix script:
+```bash
+chmod +x fix-npm.sh
+./fix-npm.sh
+```
+
+**Manual Fix (if script fails)**:
+```bash
+# Stop all Node processes
+pkill -f node
+
+# Clean everything
+sudo rm -rf node_modules package-lock.json server/node_modules server/package-lock.json
+npm cache clean --force
+
+# Fix permissions
+sudo chown -R $USER:$USER .
+
+# Reinstall with proper flags
+npm install --legacy-peer-deps --no-optional
+cd server && npm install --legacy-peer-deps && cd ..
+```
+
+### npm run dev or npm run build Fails
+
+1. **Clean and reinstall**:
+```bash
+./fix-npm.sh
+```
+
+2. **Check Node.js version** (must be v20.x):
+```bash
+node --version
+```
+
+3. **Ensure backend is running first**:
+```bash
+cd server && node index.js &
+cd .. && npm run dev
+```
+
 ### Backend Connection Issues
 1. Ensure backend server is running on port 8080
-2. Check firewall settings
+2. Check firewall settings:
+```bash
+sudo ufw allow 8080
+sudo ufw allow 5173
+```
 3. Verify Node.js installation
+4. Check if ports are already in use:
+```bash
+sudo lsof -ti:8080 | xargs kill -9
+sudo lsof -ti:5173 | xargs kill -9
+```
 
 ### Tool Not Found Errors
 ```bash
@@ -117,12 +196,35 @@ which sqlmap
 
 # Install missing tools
 sudo apt install <tool-name>
+
+# Or run full installation
+./install-kali-tools.sh
 ```
 
 ### Permission Issues
 ```bash
-# Run with appropriate permissions
+# Fix file permissions
+sudo chown -R $USER:$USER /home/kali/cyber-scope-scanner
+
+# Or run with sudo (not recommended)
 sudo ./start-vapt.sh
+```
+
+### Login Issues (5 Failed Attempts Lockout)
+
+If you're locked out after 5 failed login attempts:
+- Wait 15 minutes for automatic unlock
+- Or reset via database (admin access required)
+
+### Module Resolution Errors
+
+```bash
+# Clear all caches
+npm cache clean --force
+rm -rf ~/.npm
+
+# Reinstall from scratch
+./fix-npm.sh
 ```
 
 ## 🔒 Security Notes
