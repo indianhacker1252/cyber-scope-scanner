@@ -1,30 +1,48 @@
-# VAPT Security Scanner - Production Deployment Guide
+# CyberScope Scanner - Production Deployment Guide
 
 **Copyright © 2024 Harsh Malik. All Rights Reserved.**
 
 ## 🔐 Enterprise-Grade Security Testing Platform
 
-This tool is a professional Vulnerability Assessment and Penetration Testing (VAPT) platform that integrates real Kali Linux tools with AI-powered analysis.
+This tool is a professional Vulnerability Assessment and Penetration Testing (VAPT) platform that integrates real Kali Linux tools with AI-powered analysis and secure cloud-based authentication.
+
+### ✨ Key Features
+
+- ✅ **Secure Authentication** - 5-attempt lockout, role-based access (Admin/User)
+- ✅ **Real Kali Linux Integration** - 30+ actual security tools, no demo data
+- ✅ **Database-Backed Reports** - POC, Request/Response data storage
+- ✅ **AI-Powered Analysis** - ChatGPT and Exa.ai integration
+- ✅ **Real-time Scanning** - WebSocket streaming of scan output
+- ✅ **Row-Level Security** - User data isolation via RLS policies
 
 ### ⚠️ CRITICAL: NO DEMO MODE
 
-This application **DOES NOT USE FAKE OR DEMO DATA**. All scans are real-time and connect to actual Kali Linux backend tools. If the backend is not available, the application will not function and will display clear error messages.
+This application **DOES NOT USE FAKE OR DEMO DATA**. All scans are real-time and connect to actual Kali Linux backend tools. Authentication is required before use.
 
 ---
 
 ## 🏗️ Architecture
 
-### Frontend (React + TypeScript)
+### Frontend (React + TypeScript + Lovable Cloud)
 - Real-time WebSocket streaming from backend
-- No mock data or demo modes
+- Secure authentication with session management
+- User and admin role support
 - Comprehensive error logging
-- AI-powered recommendations via Exa.ai
+- AI-powered recommendations via Exa.ai and ChatGPT
+- Database-backed scan reports with POC storage
 
 ### Backend (Node.js + Kali Linux)
 - Direct integration with Kali Linux security tools
 - WebSocket streaming for real-time output
 - Session management and timeout handling
 - Tool execution with proper privilege handling
+
+### Database (Lovable Cloud/Supabase)
+- User authentication and profiles
+- Role-based access control (RBAC)
+- Scan reports with POC and request/response data
+- Login attempt tracking for security
+- Row-Level Security (RLS) policies for data isolation
 
 ---
 
@@ -207,10 +225,13 @@ curl http://localhost:8080/api/tools/installed
    - Use VPN/secure network for production deployments
    - Never expose backend directly to the internet
 
-3. **Authentication** (Future Enhancement)
-   - Consider adding authentication to the backend
-   - Implement rate limiting
-   - Add API key validation
+3. **Authentication** 
+   - 5-attempt login lockout implemented (15-minute cooldown)
+   - Default credentials: username `kali`, password `kali`
+   - Change password after first login via Profile button
+   - Role-based access control (Admin/User roles)
+   - Session management with automatic expiry
+   - Row-Level Security ensures user data isolation
 
 4. **Tool Privileges**
    - Some tools require root/sudo

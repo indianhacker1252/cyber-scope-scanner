@@ -17,71 +17,69 @@ import {
   BarChart3,
   Filter,
   Search,
-  Smartphone,
-  Laptop,
-  Computer
+  Code2,
+  FileCode
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
-interface VAPTReport {
+interface ScanReport {
   id: string;
-  endpointName: string;
-  platform: 'windows' | 'macos' | 'android';
-  scanDate: Date;
-  reportType: 'vulnerability_assessment' | 'penetration_test' | 'compliance_audit';
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  vulnerabilitiesFound: number;
-  status: 'completed' | 'in_progress' | 'failed';
-  executiveSummary: string;
-  detailedFindings: Array<{
-    title: string;
-    severity: 'critical' | 'high' | 'medium' | 'low';
-    cvss: number;
-    description: string;
-    impact: string;
-    remediation: string;
-  }>;
-  complianceResults: {
-    framework: string;
-    score: number;
-    passed: number;
-    failed: number;
-  }[];
+  created_at: string;
+  user_id: string;
+  target: string;
+  scan_type: string;
+  vulnerability_name: string | null;
+  severity: string | null;
+  proof_of_concept: string | null;
+  request_data: string | null;
+  response_data: string | null;
+  scan_output: string | null;
 }
 
 const VAPTReports = () => {
-  const [reports, setReports] = useState<VAPTReport[]>([]);
-  const [selectedReport, setSelectedReport] = useState<VAPTReport | null>(null);
-  const [filterPlatform, setFilterPlatform] = useState<string>("all");
+  const [reports, setReports] = useState<ScanReport[]>([]);
+  const [selectedReport, setSelectedReport] = useState<ScanReport | null>(null);
+  const [filterScanType, setFilterScanType] = useState<string>("all");
   const [filterSeverity, setFilterSeverity] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Load actual scan reports from localStorage
-    const storedReports = localStorage.getItem('vapt_reports');
-    if (storedReports) {
-      try {
-        const parsed = JSON.parse(storedReports);
-        setReports(parsed.map((r: any) => ({
-          ...r,
-          scanDate: new Date(r.scanDate)
-        })));
-      } catch (error) {
-        console.error('Failed to load VAPT reports:', error);
-        setReports([]);
-      }
-    } else {
-      setReports([]);
-    }
+    fetchReports();
   }, []);
 
+  const fetchReports = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('scan_reports')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setReports(data || []);
+    } catch (error: any) {
+      console.error('Error fetching reports:', error);
+      toast({
+        title: "Error Loading Reports",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredReports = reports.filter(report => {
-    const matchesPlatform = filterPlatform === "all" || report.platform === filterPlatform;
+    const matchesScanType = filterScanType === "all" || report.scan_type === filterScanType;
     const matchesSeverity = filterSeverity === "all" || report.severity === filterSeverity;
-    const matchesSearch = report.endpointName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         report.id.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = report.target.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (report.vulnerability_name?.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    return matchesPlatform && matchesSeverity && matchesSearch;
+    return matchesScanType && matchesSeverity && matchesSearch;
   });
 
   const getSeverityColor = (severity: string) => {
@@ -103,60 +101,49 @@ const VAPTReports = () => {
     }
   };
 
-  const getPlatformIcon = (platform: string) => {
-    switch (platform) {
-      case 'windows': return Computer;
-      case 'macos': return Laptop;
-      case 'android': return Smartphone;
-      default: return Target;
-    }
-  };
+  const downloadReport = (report: ScanReport) => {
+    const reportContent = `# VAPT Scan Report - ${report.target}
 
-  const downloadReport = (report: VAPTReport) => {
-    const reportContent = `# VAPT Report - ${report.endpointName}
+## Scan Information
+- **Target**: ${report.target}
+- **Scan Type**: ${report.scan_type.toUpperCase()}
+- **Scan Date**: ${new Date(report.created_at).toLocaleString()}
+- **Report ID**: ${report.id}
 
-## Executive Summary
-${report.executiveSummary}
+${report.vulnerability_name ? `## Vulnerability Found
+- **Name**: ${report.vulnerability_name}
+- **Severity**: ${report.severity?.toUpperCase() || 'N/A'}` : ''}
 
-## Report Details
-- **Endpoint**: ${report.endpointName}
-- **Platform**: ${report.platform.toUpperCase()}
-- **Scan Date**: ${report.scanDate.toLocaleDateString()}
-- **Report Type**: ${report.reportType.replace('_', ' ').toUpperCase()}
-- **Overall Severity**: ${report.severity.toUpperCase()}
-- **Vulnerabilities Found**: ${report.vulnerabilitiesFound}
-- **Status**: ${report.status.toUpperCase()}
+${report.proof_of_concept ? `## Proof of Concept (POC)
+\`\`\`
+${report.proof_of_concept}
+\`\`\`` : ''}
 
-## Detailed Findings
+${report.request_data ? `## HTTP Request
+\`\`\`http
+${report.request_data}
+\`\`\`` : ''}
 
-${report.detailedFindings.map((finding, index) => `
-### ${index + 1}. ${finding.title}
-- **Severity**: ${finding.severity.toUpperCase()}
-- **CVSS Score**: ${finding.cvss}
-- **Description**: ${finding.description}
-- **Impact**: ${finding.impact}
-- **Remediation**: ${finding.remediation}
-`).join('\n')}
+${report.response_data ? `## HTTP Response
+\`\`\`http
+${report.response_data}
+\`\`\`` : ''}
 
-## Compliance Results
-
-${report.complianceResults.map(compliance => `
-### ${compliance.framework}
-- **Score**: ${compliance.score}%
-- **Tests Passed**: ${compliance.passed}
-- **Tests Failed**: ${compliance.failed}
-`).join('\n')}
+${report.scan_output ? `## Full Scan Output
+\`\`\`
+${report.scan_output}
+\`\`\`` : ''}
 
 ---
-Generated by CyberScope Security Platform
-Report ID: ${report.id}
+Generated by CyberScope Scanner
+© 2024 Harsh Malik - All Rights Reserved
 `;
 
     const blob = new Blob([reportContent], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `VAPT_Report_${report.endpointName}_${report.id}.md`;
+    a.download = `VAPT_Report_${report.scan_type}_${report.target.replace(/[^a-z0-9]/gi, '_')}_${report.id.substring(0, 8)}.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -197,16 +184,18 @@ Report ID: ${report.id}
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Platform</label>
-              <Select value={filterPlatform} onValueChange={setFilterPlatform}>
+              <label className="text-sm font-medium">Scan Type</label>
+              <Select value={filterScanType} onValueChange={setFilterScanType}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All Platforms" />
+                  <SelectValue placeholder="All Scan Types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Platforms</SelectItem>
-                  <SelectItem value="windows">Windows</SelectItem>
-                  <SelectItem value="macos">macOS</SelectItem>
-                  <SelectItem value="android">Android</SelectItem>
+                  <SelectItem value="all">All Scan Types</SelectItem>
+                  <SelectItem value="nmap">Nmap</SelectItem>
+                  <SelectItem value="nikto">Nikto</SelectItem>
+                  <SelectItem value="sqlmap">SQLMap</SelectItem>
+                  <SelectItem value="gobuster">Gobuster</SelectItem>
+                  <SelectItem value="nuclei">Nuclei</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -237,29 +226,44 @@ Report ID: ${report.id}
       </Card>
 
       {/* Reports Grid */}
-      <div className="grid gap-6">
-        {filteredReports.map((report) => {
-          const PlatformIcon = getPlatformIcon(report.platform);
-          return (
+      {loading ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <p className="text-muted-foreground">Loading reports...</p>
+          </CardContent>
+        </Card>
+      ) : filteredReports.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <p className="text-lg font-medium mb-2">No Reports Found</p>
+            <p className="text-muted-foreground">
+              Run security scans to generate VAPT reports with detailed findings
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-6">
+          {filteredReports.map((report) => (
             <Card key={report.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <PlatformIcon className="h-6 w-6 text-primary" />
+                    <Target className="h-6 w-6 text-primary" />
                     <div>
-                      <CardTitle className="text-lg">{report.endpointName}</CardTitle>
+                      <CardTitle className="text-lg">{report.target}</CardTitle>
                       <p className="text-sm text-muted-foreground">
-                        Report ID: {report.id} • {report.scanDate.toLocaleDateString()}
+                        {report.scan_type.toUpperCase()} • {new Date(report.created_at).toLocaleString()}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Badge className={getSeverityColor(report.severity)}>
-                      {report.severity.toUpperCase()}
-                    </Badge>
-                    <Badge className={getStatusColor(report.status)}>
-                      {report.status.replace('_', ' ').toUpperCase()}
-                    </Badge>
+                    {report.severity && (
+                      <Badge className={getSeverityColor(report.severity)}>
+                        {report.severity.toUpperCase()}
+                      </Badge>
+                    )}
+                    <Badge variant="outline">{report.scan_type}</Badge>
                   </div>
                 </div>
               </CardHeader>
@@ -267,30 +271,23 @@ Report ID: ${report.id}
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-1">
-                      <p className="text-sm font-medium">Report Type</p>
-                      <p className="text-sm text-muted-foreground capitalize">
-                        {report.reportType.replace('_', ' ')}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">Vulnerabilities Found</p>
+                      <p className="text-sm font-medium">Vulnerability</p>
                       <p className="text-sm text-muted-foreground">
-                        {report.vulnerabilitiesFound} issues
+                        {report.vulnerability_name || 'N/A'}
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-sm font-medium">Platform</p>
-                      <p className="text-sm text-muted-foreground capitalize">
-                        {report.platform}
+                      <p className="text-sm font-medium">POC Available</p>
+                      <p className="text-sm text-muted-foreground">
+                        {report.proof_of_concept ? '✅ Yes' : '❌ No'}
                       </p>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Executive Summary</p>
-                    <p className="text-sm text-muted-foreground">
-                      {report.executiveSummary.substring(0, 150)}...
-                    </p>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Request/Response</p>
+                      <p className="text-sm text-muted-foreground">
+                        {report.request_data || report.response_data ? '✅ Captured' : '❌ None'}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="flex justify-between items-center pt-4 border-t">
@@ -309,7 +306,7 @@ Report ID: ${report.id}
                         <DialogContent className="max-w-4xl max-h-[80vh]">
                           <DialogHeader>
                             <DialogTitle>
-                              VAPT Report - {selectedReport?.endpointName}
+                              VAPT Report - {selectedReport?.target}
                             </DialogTitle>
                           </DialogHeader>
                           <ScrollArea className="h-[60vh]">
@@ -317,86 +314,84 @@ Report ID: ${report.id}
                               <div className="space-y-6 pr-4">
                                 <div className="grid grid-cols-2 gap-4">
                                   <div>
-                                    <h4 className="font-semibold mb-2">Report Information</h4>
+                                    <h4 className="font-semibold mb-2 flex items-center">
+                                      <Target className="h-4 w-4 mr-2" />
+                                      Scan Information
+                                    </h4>
                                     <div className="space-y-1 text-sm">
-                                      <p><strong>ID:</strong> {selectedReport.id}</p>
-                                      <p><strong>Platform:</strong> {selectedReport.platform}</p>
-                                      <p><strong>Date:</strong> {selectedReport.scanDate.toLocaleDateString()}</p>
-                                      <p><strong>Type:</strong> {selectedReport.reportType.replace('_', ' ')}</p>
+                                      <p><strong>Target:</strong> {selectedReport.target}</p>
+                                      <p><strong>Scan Type:</strong> {selectedReport.scan_type.toUpperCase()}</p>
+                                      <p><strong>Date:</strong> {new Date(selectedReport.created_at).toLocaleString()}</p>
+                                      <p><strong>Report ID:</strong> {selectedReport.id.substring(0, 8)}...</p>
                                     </div>
                                   </div>
                                   <div>
-                                    <h4 className="font-semibold mb-2">Summary</h4>
+                                    <h4 className="font-semibold mb-2 flex items-center">
+                                      <AlertTriangle className="h-4 w-4 mr-2" />
+                                      Vulnerability Details
+                                    </h4>
                                     <div className="space-y-1 text-sm">
-                                      <p><strong>Vulnerabilities:</strong> {selectedReport.vulnerabilitiesFound}</p>
-                                      <p><strong>Severity:</strong> 
-                                        <Badge className={`ml-2 ${getSeverityColor(selectedReport.severity)}`}>
-                                          {selectedReport.severity}
-                                        </Badge>
-                                      </p>
-                                      <p><strong>Status:</strong> 
-                                        <Badge className={`ml-2 ${getStatusColor(selectedReport.status)}`}>
-                                          {selectedReport.status}
-                                        </Badge>
-                                      </p>
+                                      <p><strong>Name:</strong> {selectedReport.vulnerability_name || 'N/A'}</p>
+                                      {selectedReport.severity && (
+                                        <p><strong>Severity:</strong> 
+                                          <Badge className={`ml-2 ${getSeverityColor(selectedReport.severity)}`}>
+                                            {selectedReport.severity}
+                                          </Badge>
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
 
-                                <div>
-                                  <h4 className="font-semibold mb-2">Executive Summary</h4>
-                                  <p className="text-sm text-muted-foreground">
-                                    {selectedReport.executiveSummary}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <h4 className="font-semibold mb-2">Detailed Findings</h4>
-                                  <div className="space-y-4">
-                                    {selectedReport.detailedFindings.map((finding, index) => (
-                                      <Card key={index}>
-                                        <CardContent className="p-4">
-                                          <div className="flex items-center justify-between mb-2">
-                                            <h5 className="font-medium">{finding.title}</h5>
-                                            <div className="flex items-center space-x-2">
-                                              <Badge className={getSeverityColor(finding.severity)}>
-                                                {finding.severity}
-                                              </Badge>
-                                              <Badge variant="outline">
-                                                CVSS: {finding.cvss}
-                                              </Badge>
-                                            </div>
-                                          </div>
-                                          <div className="space-y-2 text-sm">
-                                            <p><strong>Description:</strong> {finding.description}</p>
-                                            <p><strong>Impact:</strong> {finding.impact}</p>
-                                            <p><strong>Remediation:</strong> {finding.remediation}</p>
-                                          </div>
-                                        </CardContent>
-                                      </Card>
-                                    ))}
+                                {selectedReport.proof_of_concept && (
+                                  <div>
+                                    <h4 className="font-semibold mb-2 flex items-center">
+                                      <Code2 className="h-4 w-4 mr-2" />
+                                      Proof of Concept (POC)
+                                    </h4>
+                                    <pre className="bg-muted p-4 rounded-lg text-sm overflow-x-auto">
+                                      {selectedReport.proof_of_concept}
+                                    </pre>
                                   </div>
-                                </div>
+                                )}
 
-                                <div>
-                                  <h4 className="font-semibold mb-2">Compliance Results</h4>
-                                  <div className="grid gap-4">
-                                    {selectedReport.complianceResults.map((compliance, index) => (
-                                      <div key={index} className="flex items-center justify-between p-3 border rounded">
-                                        <div>
-                                          <p className="font-medium">{compliance.framework}</p>
-                                          <p className="text-sm text-muted-foreground">
-                                            {compliance.passed} passed, {compliance.failed} failed
-                                          </p>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="text-2xl font-bold">{compliance.score}%</p>
-                                          <p className="text-xs text-muted-foreground">Compliance Score</p>
-                                        </div>
-                                      </div>
-                                    ))}
+                                {selectedReport.request_data && (
+                                  <div>
+                                    <h4 className="font-semibold mb-2 flex items-center">
+                                      <FileCode className="h-4 w-4 mr-2" />
+                                      HTTP Request
+                                    </h4>
+                                    <pre className="bg-muted p-4 rounded-lg text-sm overflow-x-auto">
+                                      {selectedReport.request_data}
+                                    </pre>
                                   </div>
-                                </div>
+                                )}
+
+                                {selectedReport.response_data && (
+                                  <div>
+                                    <h4 className="font-semibold mb-2 flex items-center">
+                                      <FileCode className="h-4 w-4 mr-2" />
+                                      HTTP Response
+                                    </h4>
+                                    <pre className="bg-muted p-4 rounded-lg text-sm overflow-x-auto">
+                                      {selectedReport.response_data}
+                                    </pre>
+                                  </div>
+                                )}
+
+                                {selectedReport.scan_output && (
+                                  <div>
+                                    <h4 className="font-semibold mb-2 flex items-center">
+                                      <FileText className="h-4 w-4 mr-2" />
+                                      Full Scan Output
+                                    </h4>
+                                    <ScrollArea className="h-[300px]">
+                                      <pre className="bg-muted p-4 rounded-lg text-xs">
+                                        {selectedReport.scan_output}
+                                      </pre>
+                                    </ScrollArea>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </ScrollArea>
@@ -409,29 +404,14 @@ Report ID: ${report.id}
                     </div>
                     <div className="flex items-center text-sm text-muted-foreground">
                       <Calendar className="h-4 w-4 mr-1" />
-                      {report.scanDate.toLocaleDateString()}
+                      {new Date(report.created_at).toLocaleString()}
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          );
-        })}
-      </div>
-
-      {filteredReports.length === 0 && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No Reports Found</h3>
-            <p className="text-muted-foreground text-center">
-              {searchTerm || filterPlatform !== "all" || filterSeverity !== "all" 
-                ? "Try adjusting your filters to see more results"
-                : "VAPT reports will appear here once endpoint scans are completed"
-              }
-            </p>
-          </CardContent>
-        </Card>
+          ))}
+        </div>
       )}
     </div>
   );
