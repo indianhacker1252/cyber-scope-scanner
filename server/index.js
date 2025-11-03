@@ -198,7 +198,7 @@ app.post('/api/scan/nmap', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId });
   } catch (error) {
     console.error('Nmap scan error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred while initiating the scan' });
   }
 });
 
@@ -213,7 +213,8 @@ app.post('/api/scan/nikto', authenticateJWT, async (req, res) => {
     
     // Check if nikto is installed
     if (!checkTool('nikto')) {
-      return res.status(500).json({ error: 'Nikto is not installed on this system' });
+      console.error('[SERVER] Tool check failed: Nikto not installed');
+      return res.status(503).json({ error: 'Scanning service temporarily unavailable' });
     }
 
     const niktoArgs = ['-h', target, '-Format', 'txt'];
@@ -261,7 +262,7 @@ app.post('/api/scan/nikto', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId });
   } catch (error) {
     console.error('Nikto scan error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred while initiating the scan' });
   }
 });
 
@@ -276,7 +277,8 @@ app.post('/api/scan/sqlmap', authenticateJWT, async (req, res) => {
     
     // Check if sqlmap is installed
     if (!checkTool('sqlmap')) {
-      return res.status(500).json({ error: 'SQLMap is not installed on this system' });
+      console.error('[SERVER] Tool check failed: SQLMap not installed');
+      return res.status(503).json({ error: 'SQL injection testing service temporarily unavailable' });
     }
 
     // Build automated SQLMap arguments
@@ -359,7 +361,7 @@ app.post('/api/scan/sqlmap', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId: safeSessionId });
   } catch (error) {
     console.error('SQLMap scan error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred while initiating SQL injection test' });
   }
 });
 
@@ -421,7 +423,7 @@ app.post('/api/scan/dns', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId: safeSessionId });
   } catch (error) {
     console.error('DNS lookup error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred during DNS lookup' });
   }
 });
 
@@ -489,7 +491,7 @@ app.post('/api/scan/whois', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId });
   } catch (error) {
     console.error('WHOIS lookup error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred during WHOIS lookup' });
   }
 });
 
@@ -561,7 +563,7 @@ app.post('/api/scan/ssl', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId: safeSessionId });
   } catch (error) {
     console.error('SSL analysis error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred during SSL analysis' });
   }
 });
 
@@ -576,7 +578,8 @@ app.post('/api/scan/gobuster', authenticateJWT, async (req, res) => {
     
     // Check if gobuster is installed
     if (!checkTool('gobuster')) {
-      return res.status(500).json({ error: 'Gobuster is not installed on this system' });
+      console.error('[SERVER] Tool check failed: Gobuster not installed');
+      return res.status(503).json({ error: 'Directory enumeration service temporarily unavailable' });
     }
 
     // Validate wordlist path
@@ -631,7 +634,7 @@ app.post('/api/scan/gobuster', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId });
   } catch (error) {
     console.error('Gobuster scan error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred while initiating directory enumeration' });
   }
 });
 
@@ -646,7 +649,8 @@ app.post('/api/scan/nuclei', authenticateJWT, async (req, res) => {
   try {
     // Check if nuclei is installed
     if (!checkTool('nuclei')) {
-      return res.status(500).json({ error: 'Nuclei is not installed on this system' });
+      console.error('[SERVER] Tool check failed: Nuclei not installed');
+      return res.status(503).json({ error: 'Vulnerability scanning service temporarily unavailable' });
     }
 
     const nucleiArgs = ['-target', target, '-v'];
@@ -698,7 +702,7 @@ app.post('/api/scan/nuclei', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId });
   } catch (error) {
     console.error('Nuclei scan error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred while initiating vulnerability scan' });
   }
 });
 
@@ -713,7 +717,8 @@ app.post('/api/scan/whatweb', authenticateJWT, async (req, res) => {
   try {
     // Check if whatweb is installed
     if (!checkTool('whatweb')) {
-      return res.status(500).json({ error: 'WhatWeb is not installed on this system' });
+      console.error('[SERVER] Tool check failed: WhatWeb not installed');
+      return res.status(503).json({ error: 'Web technology detection service temporarily unavailable' });
     }
 
     const whatwebArgs = ['-a', '3', target];
@@ -761,7 +766,7 @@ app.post('/api/scan/whatweb', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId });
   } catch (error) {
     console.error('WhatWeb scan error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred while initiating web technology detection' });
   }
 });
 
@@ -776,7 +781,8 @@ app.post('/api/scan/amass', authenticateJWT, async (req, res) => {
 
     // Check if amass is installed
     if (!checkTool('amass')) {
-      return res.status(500).json({ error: 'Amass is not installed on this system' });
+      console.error('[SERVER] Tool check failed: Amass not installed');
+      return res.status(503).json({ error: 'Subdomain enumeration service temporarily unavailable' });
     }
 
     const amassArgs = ['enum', '-d', validatedDomain];
@@ -824,7 +830,7 @@ app.post('/api/scan/amass', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId: safeSessionId });
   } catch (error) {
     console.error('Amass scan error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred while initiating subdomain enumeration' });
   }
 });
 
@@ -839,7 +845,8 @@ app.post('/api/scan/sublist3r', authenticateJWT, async (req, res) => {
 
     // Check if sublist3r is installed  
     if (!checkTool('sublist3r')) {
-      return res.status(500).json({ error: 'Sublist3r is not installed on this system' });
+      console.error('[SERVER] Tool check failed: Sublist3r not installed');
+      return res.status(503).json({ error: 'Subdomain discovery service temporarily unavailable' });
     }
 
     const sublist3rArgs = ['-d', validatedDomain];
@@ -887,7 +894,7 @@ app.post('/api/scan/sublist3r', authenticateJWT, async (req, res) => {
     res.json({ success: true, sessionId: safeSessionId });
   } catch (error) {
     console.error('Sublist3r scan error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred while initiating subdomain discovery' });
   }
 });
 
@@ -1540,8 +1547,9 @@ app.post('/api/scan/reconng', authenticateJWT, (req, res) => {
 function spawnToolSession(tool, args, sessionId, res) {
   try {
     if (!checkTool(tool)) {
-      return res.status(500).json({ 
-        error: `${tool} is not installed on this system`,
+      console.error(`[SERVER] Tool check failed: ${tool} not installed`);
+      return res.status(503).json({ 
+        error: 'Scanning service temporarily unavailable',
         installed: false 
       });
     }
@@ -1589,7 +1597,7 @@ function spawnToolSession(tool, args, sessionId, res) {
     res.json({ success: true, sessionId });
   } catch (error) {
     console.error(`${tool} error:`, error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'An error occurred while initiating the scan' });
   }
 }
 // ===== DUPLICATE ENDPOINTS BELOW - REMOVE OR UPDATE =====

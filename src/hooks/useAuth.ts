@@ -14,23 +14,20 @@ export const useAuth = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        // Get user role from localStorage or database
-        const storedRole = localStorage.getItem('userRole');
-        if (storedRole) {
-          setUserRole(storedRole);
-        } else {
-          // Fetch from database
-          supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', session.user.id)
-            .single()
-            .then(({ data }) => {
-              const role = data?.role || 'user';
-              setUserRole(role);
-              localStorage.setItem('userRole', role);
-            });
-        }
+        // Always fetch from database first - never trust localStorage
+        supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single()
+          .then(({ data }) => {
+            const role = data?.role || 'user';
+            setUserRole(role);
+            // Cache for UI performance only, not for security
+            localStorage.setItem('userRole', role);
+          });
+      } else {
+        setUserRole(null);
       }
       setLoading(false);
     });
@@ -44,22 +41,18 @@ export const useAuth = () => {
         localStorage.removeItem('userRole');
         navigate('/login');
       } else {
-        // Get user role
-        const storedRole = localStorage.getItem('userRole');
-        if (storedRole) {
-          setUserRole(storedRole);
-        } else {
-          supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', session.user.id)
-            .single()
-            .then(({ data }) => {
-              const role = data?.role || 'user';
-              setUserRole(role);
-              localStorage.setItem('userRole', role);
-            });
-        }
+        // Always fetch from database first - never trust localStorage
+        supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single()
+          .then(({ data }) => {
+            const role = data?.role || 'user';
+            setUserRole(role);
+            // Cache for UI performance only, not for security
+            localStorage.setItem('userRole', role);
+          });
       }
     });
 
