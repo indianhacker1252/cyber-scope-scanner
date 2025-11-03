@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
 const crypto = require('crypto');
+const { createRemoteJWKSet, jwtVerify } = require('jose');
 
 const app = express();
 const server = createServer(app);
@@ -17,8 +18,14 @@ const wss = new WebSocketServer({ server });
 app.use(cors());
 app.use(express.json());
 
-// JWT Authentication middleware
-const authenticateJWT = (req, res, next) => {
+// JWT Authentication middleware with proper Supabase verification
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://uyqzmpjcazxakyzjkfxc.supabase.co';
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+
+// Create JWKS (JSON Web Key Set) for Supabase
+const JWKS = createRemoteJWKSet(new URL(`${SUPABASE_URL}/auth/v1/jwks`));
+
+const authenticateJWT = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -27,15 +34,26 @@ const authenticateJWT = (req, res, next) => {
   
   const token = authHeader.substring(7);
   
-  // Verify JWT token with Supabase
-  // For now, we'll implement a basic check - in production, verify with Supabase
-  if (!token || token.length < 20) {
-    return res.status(401).json({ error: 'Invalid authentication token' });
+  try {
+    // Verify JWT token with Supabase JWKS
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: `${SUPABASE_URL}/auth/v1`,
+      audience: 'authenticated'
+    });
+    
+    // Store user info from verified token
+    req.user = {
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role
+    };
+    
+    console.log(`[AUTH] User ${payload.email} (${payload.sub}) authenticated`);
+    next();
+  } catch (error) {
+    console.error('[AUTH] Token verification failed:', error.message);
+    return res.status(401).json({ error: 'Invalid or expired authentication token' });
   }
-  
-  // Store user info from token for logging (in production, decode JWT properly)
-  req.user = { token };
-  next();
 };
 
 // Input validation helpers
@@ -185,10 +203,14 @@ app.post('/api/scan/nmap', authenticateJWT, async (req, res) => {
 });
 
 // Nikto scan endpoint
-app.post('/api/scan/nikto', async (req, res) => {
+app.post('/api/scan/nikto', authenticateJWT, async (req, res) => {
   const { target, sessionId } = req.body;
   
   try {
+    // Validate target
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
     // Check if nikto is installed
     if (!checkTool('nikto')) {
       return res.status(500).json({ error: 'Nikto is not installed on this system' });
@@ -244,10 +266,14 @@ app.post('/api/scan/nikto', async (req, res) => {
 });
 
 // SQLMap scan endpoint with full automation
-app.post('/api/scan/sqlmap', async (req, res) => {
+app.post('/api/scan/sqlmap', authenticateJWT, async (req, res) => {
   const { target, options, sessionId, scanMode } = req.body;
   
   try {
+    // Validate target
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
     // Check if sqlmap is installed
     if (!checkTool('sqlmap')) {
       return res.status(500).json({ error: 'SQLMap is not installed on this system' });
@@ -255,7 +281,7 @@ app.post('/api/scan/sqlmap', async (req, res) => {
 
     // Build automated SQLMap arguments
     const sqlmapArgs = [
-      '-u', target,
+      '-u', validatedTarget,
       '--batch',              // Never ask for user input
       '--random-agent',       // Use random User-Agent
       '--threads', '4',       // Faster scanning
@@ -273,22 +299,21 @@ app.post('/api/scan/sqlmap', async (req, res) => {
       sqlmapArgs.push('--level', '2', '--risk', '2');
     }
 
-    if (options) {
-      sqlmapArgs.push(...options.split(' '));
-    }
+    // DO NOT allow arbitrary options - major security risk
+    // If options needed, implement strict allowlist
     
-    console.log(`Starting SQLMap scan: sqlmap ${sqlmapArgs.join(' ')}`);
+    console.log(`[${req.user.email}] Starting SQLMap scan: sqlmap ${sqlmapArgs.join(' ')}`);
     
     const process = spawn('sqlmap', sqlmapArgs);
-    activeSessions.set(sessionId, process);
-    sessionOutputs.set(sessionId, '');
+    activeSessions.set(safeSessionId, process);
+    sessionOutputs.set(safeSessionId, '');
 
     // Set timeout to prevent hanging (15 minutes)
     const timeout = setTimeout(() => {
-      console.log(`SQLMap scan timeout for session ${sessionId}`);
+      console.log(`SQLMap scan timeout for session ${safeSessionId}`);
       if (process && !process.killed) {
         process.kill('SIGTERM');
-        broadcastToSession(sessionId, {
+        broadcastToSession(safeSessionId, {
           type: 'output',
           content: '\n[TIMEOUT] Scan exceeded maximum duration (15 minutes)\n'
         });
@@ -297,8 +322,8 @@ app.post('/api/scan/sqlmap', async (req, res) => {
 
     process.stdout.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
@@ -306,8 +331,8 @@ app.post('/api/scan/sqlmap', async (req, res) => {
 
     process.stderr.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
@@ -315,23 +340,23 @@ app.post('/api/scan/sqlmap', async (req, res) => {
 
     process.on('close', (code) => {
       clearTimeout(timeout);
-      const fullOutput = sessionOutputs.get(sessionId) || '';
-      broadcastToSession(sessionId, {
+      const fullOutput = sessionOutputs.get(safeSessionId) || '';
+      broadcastToSession(safeSessionId, {
         type: 'complete',
         result: {
-          id: sessionId,
+          id: safeSessionId,
           tool: 'sqlmap',
-          target,
+          target: validatedTarget,
           status: code === 0 ? 'completed' : 'failed',
           output: fullOutput,
           findings: parseSQLMapOutput(fullOutput)
         }
       });
-      activeSessions.delete(sessionId);
-      sessionOutputs.delete(sessionId);
+      activeSessions.delete(safeSessionId);
+      sessionOutputs.delete(safeSessionId);
     });
 
-    res.json({ success: true, sessionId });
+    res.json({ success: true, sessionId: safeSessionId });
   } catch (error) {
     console.error('SQLMap scan error:', error);
     res.status(500).json({ error: error.message });
@@ -522,23 +547,32 @@ app.post('/api/scan/ssl', async (req, res) => {
 });
 
 // Gobuster scan endpoint
-app.post('/api/scan/gobuster', async (req, res) => {
+app.post('/api/scan/gobuster', authenticateJWT, async (req, res) => {
   const { target, wordlist, sessionId } = req.body;
   
   try {
+    // Validate inputs
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
     // Check if gobuster is installed
     if (!checkTool('gobuster')) {
       return res.status(500).json({ error: 'Gobuster is not installed on this system' });
     }
 
-    const wordlistPath = wordlist || '/usr/share/wordlists/dirb/common.txt';
-    const gobusterArgs = ['dir', '-u', target, '-w', wordlistPath, '-t', '10'];
+    // Validate wordlist path
+    let wordlistPath = '/usr/share/wordlists/dirb/common.txt';
+    if (wordlist) {
+      wordlistPath = validateFilePath(wordlist, '/usr/share/wordlists');
+    }
     
-    console.log(`Starting Gobuster scan: gobuster ${gobusterArgs.join(' ')}`);
+    const gobusterArgs = ['dir', '-u', validatedTarget, '-w', wordlistPath, '-t', '10'];
+    
+    console.log(`[${req.user.email}] Starting Gobuster scan: gobuster ${gobusterArgs.join(' ')}`);
     
     const process = spawn('gobuster', gobusterArgs);
-    activeSessions.set(sessionId, process);
-    sessionOutputs.set(sessionId, '');
+    activeSessions.set(safeSessionId, process);
+    sessionOutputs.set(safeSessionId, '');
 
     process.stdout.on('data', (data) => {
       const output = data.toString();
@@ -583,8 +617,12 @@ app.post('/api/scan/gobuster', async (req, res) => {
 });
 
 // Nuclei scan endpoint
-app.post('/api/scan/nuclei', async (req, res) => {
+app.post('/api/scan/nuclei', authenticateJWT, async (req, res) => {
   const { target, templates, sessionId } = req.body;
+  
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
   
   try {
     // Check if nuclei is installed
@@ -646,8 +684,12 @@ app.post('/api/scan/nuclei', async (req, res) => {
 });
 
 // WhatWeb scan endpoint
-app.post('/api/scan/whatweb', async (req, res) => {
+app.post('/api/scan/whatweb', authenticateJWT, async (req, res) => {
   const { target, sessionId } = req.body;
+  
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
   
   try {
     // Check if whatweb is installed
@@ -1039,260 +1081,409 @@ app.post('/api/scan/masscan', (req, res) => {
 });
 
 // Hydra - Password cracking
-app.post('/api/scan/hydra', (req, res) => {
+app.post('/api/scan/hydra', authenticateJWT, (req, res) => {
   const { target, service = 'ssh', usernameList, passwordList, sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
-  const hydraArgs = [];
-  
-  // Support both single username and username list
-  if (usernameList) {
-    hydraArgs.push('-L', usernameList);
-  } else {
-    hydraArgs.push('-l', 'admin'); // Default username if none provided
-  }
-  
-  // Support password list
-  if (passwordList) {
-    hydraArgs.push('-P', passwordList);
-  } else {
-    hydraArgs.push('-P', '/usr/share/wordlists/rockyou.txt');
-  }
-  
-  hydraArgs.push(
-    service + '://' + target,
-    '-V',
-    '-f',
-    '-t', '4'
-  );
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const hydraArgs = [];
+    
+    // Support both single username and username list
+    if (usernameList) {
+      const validatedUserList = validateFilePath(usernameList, '/usr/share/wordlists');
+      hydraArgs.push('-L', validatedUserList);
+    } else {
+      hydraArgs.push('-l', 'admin'); // Default username if none provided
+    }
+    
+    // Support password list
+    if (passwordList) {
+      const validatedPassList = validateFilePath(passwordList, '/usr/share/wordlists');
+      hydraArgs.push('-P', validatedPassList);
+    } else {
+      hydraArgs.push('-P', '/usr/share/wordlists/rockyou.txt');
+    }
+    
+    // Validate service is alphanumeric
+    if (!/^[a-z0-9-]+$/.test(service)) {
+      return res.status(400).json({ error: 'Invalid service name' });
+    }
+    
+    hydraArgs.push(
+      service + '://' + validatedTarget,
+      '-V',
+      '-f',
+      '-t', '4'
+    );
 
-  spawnToolSession('hydra', hydraArgs, sessionId, res);
+    console.log(`[${req.user.email}] Starting Hydra: hydra ${hydraArgs.join(' ')}`);
+    spawnToolSession('hydra', hydraArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // WPScan - WordPress security scanner
-app.post('/api/scan/wpscan', (req, res) => {
+app.post('/api/scan/wpscan', authenticateJWT, (req, res) => {
   const { target, apiToken, sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
-  const wpscanArgs = [
-    '--url', target,
-    '--enumerate', 'vp,vt,u',
-    '--random-user-agent',
-    '--verbose'
-  ];
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const wpscanArgs = [
+      '--url', validatedTarget,
+      '--enumerate', 'vp,vt,u',
+      '--random-user-agent',
+      '--verbose'
+    ];
 
-  if (apiToken) {
-    wpscanArgs.push('--api-token', apiToken);
+    if (apiToken) {
+      wpscanArgs.push('--api-token', apiToken);
+    }
+
+    console.log(`[${req.user.email}] Starting WPScan`);
+    spawnToolSession('wpscan', wpscanArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
-
-  spawnToolSession('wpscan', wpscanArgs, sessionId, res);
 });
 
 // Enum4linux - SMB enumeration
-app.post('/api/scan/enum4linux', (req, res) => {
+app.post('/api/scan/enum4linux', authenticateJWT, (req, res) => {
   const { target, sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
-  const enum4linuxArgs = ['-a', target];
-  spawnToolSession('enum4linux', enum4linuxArgs, sessionId, res);
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    const enum4linuxArgs = ['-a', validatedTarget];
+    console.log(`[${req.user.email}] Starting Enum4linux`);
+    spawnToolSession('enum4linux', enum4linuxArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // theHarvester - OSINT tool
-app.post('/api/scan/theharvester', (req, res) => {
+app.post('/api/scan/theharvester', authenticateJWT, (req, res) => {
   const { domain, sources = 'google,bing,duckduckgo', sessionId } = req.body;
   
   if (!domain) {
     return res.status(400).json({ error: 'Domain is required' });
   }
 
-  const harvesterArgs = [
-    '-d', domain,
-    '-b', sources,
-    '-l', '500'
-  ];
+  try {
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const harvesterArgs = [
+      '-d', validatedDomain,
+      '-b', sources,
+      '-l', '500'
+    ];
 
-  spawnToolSession('theHarvester', harvesterArgs, sessionId, res);
+    console.log(`[${req.user.email}] Starting theHarvester`);
+    spawnToolSession('theHarvester', harvesterArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // SSLyze - SSL/TLS scanner
-app.post('/api/scan/sslyze', (req, res) => {
+app.post('/api/scan/sslyze', authenticateJWT, (req, res) => {
   const { target, sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
-  const sslyzeArgs = ['--regular', target];
-  spawnToolSession('sslyze', sslyzeArgs, sessionId, res);
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    const sslyzeArgs = ['--regular', validatedTarget];
+    console.log(`[${req.user.email}] Starting SSLyze`);
+    spawnToolSession('sslyze', sslyzeArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Wafw00f - WAF detection
-app.post('/api/scan/wafw00f', (req, res) => {
+app.post('/api/scan/wafw00f', authenticateJWT, (req, res) => {
   const { target, sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
-  const wafArgs = [target, '-a'];
-  spawnToolSession('wafw00f', wafArgs, sessionId, res);
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    const wafArgs = [validatedTarget, '-a'];
+    console.log(`[${req.user.email}] Starting Wafw00f`);
+    spawnToolSession('wafw00f', wafArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Wapiti - Web vulnerability scanner
-app.post('/api/scan/wapiti', (req, res) => {
+app.post('/api/scan/wapiti', authenticateJWT, (req, res) => {
   const { target, sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
-  const wapitiArgs = [
-    '-u', target,
-    '--flush-session',
-    '-v', '2',
-    '-m', 'all'
-  ];
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const wapitiArgs = [
+      '-u', validatedTarget,
+      '--flush-session',
+      '-v', '2',
+      '-m', 'all'
+    ];
 
-  spawnToolSession('wapiti', wapitiArgs, sessionId, res);
+    console.log(`[${req.user.email}] Starting Wapiti`);
+    spawnToolSession('wapiti', wapitiArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Commix - Command injection tester
-app.post('/api/scan/commix', (req, res) => {
+app.post('/api/scan/commix', authenticateJWT, (req, res) => {
   const { target, sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
-  const commixArgs = [
-    '--url', target,
-    '--batch',
-    '--all',
-    '-v', '1'
-  ];
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const commixArgs = [
+      '--url', validatedTarget,
+      '--batch',
+      '--all',
+      '-v', '1'
+    ];
 
-  spawnToolSession('commix', commixArgs, sessionId, res);
+    console.log(`[${req.user.email}] Starting Commix`);
+    spawnToolSession('commix', commixArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // XSStrike - XSS scanner
-app.post('/api/scan/xsstrike', (req, res) => {
+app.post('/api/scan/xsstrike', authenticateJWT, (req, res) => {
   const { target, sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
-  const xsstrikeArgs = [
-    '/usr/share/xsstrike/xsstrike.py',
-    '-u', target,
-    '--crawl',
-    '-v'
-  ];
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const xsstrikeArgs = [
+      '/usr/share/xsstrike/xsstrike.py',
+      '-u', validatedTarget,
+      '--crawl',
+      '-v'
+    ];
 
-  spawnToolSession('python3', xsstrikeArgs, sessionId, res);
+    console.log(`[${req.user.email}] Starting XSStrike`);
+    spawnToolSession('python3', xsstrikeArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Dnsenum - DNS enumeration
-app.post('/api/scan/dnsenum', (req, res) => {
+app.post('/api/scan/dnsenum', authenticateJWT, (req, res) => {
   const { domain, sessionId } = req.body;
   
   if (!domain) {
     return res.status(400).json({ error: 'Domain is required' });
   }
 
-  const dnsenumArgs = ['--enum', '--noreverse', domain];
-  spawnToolSession('dnsenum', dnsenumArgs, sessionId, res);
+  try {
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    const dnsenumArgs = ['--enum', '--noreverse', validatedDomain];
+    console.log(`[${req.user.email}] Starting Dnsenum`);
+    spawnToolSession('dnsenum', dnsenumArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Fierce - DNS reconnaissance
-app.post('/api/scan/fierce', (req, res) => {
+app.post('/api/scan/fierce', authenticateJWT, (req, res) => {
   const { domain, sessionId } = req.body;
   
   if (!domain) {
     return res.status(400).json({ error: 'Domain is required' });
   }
 
-  const fierceArgs = ['--domain', domain];
-  spawnToolSession('fierce', fierceArgs, sessionId, res);
+  try {
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    const fierceArgs = ['--domain', validatedDomain];
+    console.log(`[${req.user.email}] Starting Fierce`);
+    spawnToolSession('fierce', fierceArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // CrackMapExec - Network pentesting
-app.post('/api/scan/crackmapexec', (req, res) => {
+app.post('/api/scan/crackmapexec', authenticateJWT, (req, res) => {
   const { target, protocol = 'smb', sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
-  const cmexecArgs = [protocol, target, '--shares'];
-  spawnToolSession('crackmapexec', cmexecArgs, sessionId, res);
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    // Validate protocol
+    if (!/^[a-z]+$/.test(protocol)) {
+      return res.status(400).json({ error: 'Invalid protocol' });
+    }
+    
+    const cmexecArgs = [protocol, validatedTarget, '--shares'];
+    console.log(`[${req.user.email}] Starting CrackMapExec`);
+    spawnToolSession('crackmapexec', cmexecArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Metasploit - Exploitation framework
-app.post('/api/scan/metasploit', (req, res) => {
+app.post('/api/scan/metasploit', authenticateJWT, (req, res) => {
   const { commands, sessionId } = req.body;
   
   if (!commands) {
     return res.status(400).json({ error: 'Commands are required' });
   }
 
-  const msfArgs = ['-q', '-x', commands];
-  spawnToolSession('msfconsole', msfArgs, sessionId, res);
+  try {
+    const safeSessionId = sanitizeSessionId(sessionId);
+    // Limit command length to prevent abuse
+    if (commands.length > 1000) {
+      return res.status(400).json({ error: 'Commands too long' });
+    }
+    
+    const msfArgs = ['-q', '-x', commands];
+    console.log(`[${req.user.email}] Starting Metasploit (CRITICAL TOOL)`);
+    spawnToolSession('msfconsole', msfArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // John the Ripper - Password cracking
-app.post('/api/scan/john', (req, res) => {
+app.post('/api/scan/john', authenticateJWT, (req, res) => {
   const { hashFile, wordlist, sessionId } = req.body;
   
   if (!hashFile) {
     return res.status(400).json({ error: 'Hash file is required' });
   }
 
-  const johnArgs = [
-    hashFile,
-    '--wordlist=' + (wordlist || '/usr/share/wordlists/rockyou.txt'),
-    '--format=raw-md5'
-  ];
-  spawnToolSession('john', johnArgs, sessionId, res);
+  try {
+    const safeSessionId = sanitizeSessionId(sessionId);
+    const validatedHashFile = validateFilePath(hashFile, '/tmp');
+    
+    let wordlistPath = '/usr/share/wordlists/rockyou.txt';
+    if (wordlist) {
+      wordlistPath = validateFilePath(wordlist, '/usr/share/wordlists');
+    }
+    
+    const johnArgs = [
+      validatedHashFile,
+      '--wordlist=' + wordlistPath,
+      '--format=raw-md5'
+    ];
+    
+    console.log(`[${req.user.email}] Starting John the Ripper (PASSWORD CRACKING)`);
+    spawnToolSession('john', johnArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Hashcat - Advanced password recovery
-app.post('/api/scan/hashcat', (req, res) => {
+app.post('/api/scan/hashcat', authenticateJWT, (req, res) => {
   const { hashFile, wordlist, attackMode = '0', hashType = '0', sessionId } = req.body;
   
   if (!hashFile) {
     return res.status(400).json({ error: 'Hash file is required' });
   }
 
-  const hashcatArgs = [
-    '-m', hashType,
-    '-a', attackMode,
-    hashFile,
-    wordlist || '/usr/share/wordlists/rockyou.txt',
-    '--force'
-  ];
-  spawnToolSession('hashcat', hashcatArgs, sessionId, res);
+  try {
+    const safeSessionId = sanitizeSessionId(sessionId);
+    const validatedHashFile = validateFilePath(hashFile, '/tmp');
+    
+    let wordlistPath = '/usr/share/wordlists/rockyou.txt';
+    if (wordlist) {
+      wordlistPath = validateFilePath(wordlist, '/usr/share/wordlists');
+    }
+    
+    const hashcatArgs = [
+      '-m', hashType,
+      '-a', attackMode,
+      validatedHashFile,
+      wordlistPath,
+      '--force'
+    ];
+    
+    console.log(`[${req.user.email}] Starting Hashcat (GPU PASSWORD CRACKING)`);
+    spawnToolSession('hashcat', hashcatArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Recon-ng - Reconnaissance framework
-app.post('/api/scan/reconng', (req, res) => {
+app.post('/api/scan/reconng', authenticateJWT, (req, res) => {
   const { domain, sessionId } = req.body;
   
   if (!domain) {
     return res.status(400).json({ error: 'Domain is required' });
   }
 
-  const reconArgs = ['-w', 'default', '-C', `add domains ${domain}; run`];
-  spawnToolSession('recon-ng', reconArgs, sessionId, res);
+  try {
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    const reconArgs = ['-w', 'default', '-C', `add domains ${validatedDomain}; run`];
+    console.log(`[${req.user.email}] Starting Recon-ng`);
+    spawnToolSession('recon-ng', reconArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Helper function to spawn tool sessions
@@ -1351,118 +1542,185 @@ function spawnToolSession(tool, args, sessionId, res) {
     res.status(500).json({ error: error.message });
   }
 }
-  spawnToolSession('dnsenum', dnsenumArgs, sessionId, res);
-});
+// ===== DUPLICATE ENDPOINTS BELOW - REMOVE OR UPDATE =====
+// Note: These duplicate endpoints need to be removed or consolidated
 
-// Fierce - DNS reconnaissance
-app.post('/api/scan/fierce', (req, res) => {
+// Fierce - DNS reconnaissance (DUPLICATE)
+app.post('/api/scan/fierce', authenticateJWT, (req, res) => {
   const { domain, sessionId } = req.body;
   
   if (!domain) {
     return res.status(400).json({ error: 'Domain is required' });
   }
 
-  const fierceArgs = [
-    '--domain', domain,
-    '--subdomains', 'hosts',
-    '--traverse', '5'
-  ];
+  try {
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const fierceArgs = [
+      '--domain', validatedDomain,
+      '--subdomains', 'hosts',
+      '--traverse', '5'
+    ];
 
-  spawnToolSession('fierce', fierceArgs, sessionId, res);
+    console.log(`[${req.user.email}] Starting Fierce`);
+    spawnToolSession('fierce', fierceArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
-// CrackMapExec - Network pentesting
-app.post('/api/scan/crackmapexec', (req, res) => {
+// CrackMapExec - Network pentesting (DUPLICATE)
+app.post('/api/scan/crackmapexec', authenticateJWT, (req, res) => {
   const { target, protocol = 'smb', username, password, sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
-  const cmexecArgs = [protocol, target];
-  
-  if (username && password) {
-    cmexecArgs.push('-u', username, '-p', password);
-  } else {
-    cmexecArgs.push('--gen-relay-list', 'relays.txt');
-  }
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    // Validate protocol
+    if (!/^[a-z]+$/.test(protocol)) {
+      return res.status(400).json({ error: 'Invalid protocol' });
+    }
+    
+    const cmexecArgs = [protocol, validatedTarget];
+    
+    if (username && password) {
+      cmexecArgs.push('-u', username, '-p', password);
+    } else {
+      cmexecArgs.push('--gen-relay-list', 'relays.txt');
+    }
 
-  spawnToolSession('crackmapexec', cmexecArgs, sessionId, res);
+    console.log(`[${req.user.email}] Starting CrackMapExec`);
+    spawnToolSession('crackmapexec', cmexecArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
-// Metasploit - Exploitation framework
-app.post('/api/scan/metasploit', (req, res) => {
+// Metasploit - Exploitation framework (DUPLICATE)
+app.post('/api/scan/metasploit', authenticateJWT, (req, res) => {
   const { commands, sessionId } = req.body;
   
   if (!commands || !Array.isArray(commands)) {
     return res.status(400).json({ error: 'Commands array is required' });
   }
 
-  const fs = require('fs');
-  const resourceScript = commands.join('\n') + '\nexit\n';
-  const scriptPath = `/tmp/msf-${sessionId}.rc`;
-  
-  fs.writeFileSync(scriptPath, resourceScript);
+  try {
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    // Limit command length
+    const resourceScript = commands.join('\n') + '\nexit\n';
+    if (resourceScript.length > 5000) {
+      return res.status(400).json({ error: 'Commands too long' });
+    }
+    
+    // Use safe session ID for file path
+    const scriptPath = `/tmp/msf-${safeSessionId}.rc`;
+    
+    fs.writeFileSync(scriptPath, resourceScript);
 
-  const msfArgs = ['-q', '-r', scriptPath];
-  spawnToolSession('msfconsole', msfArgs, sessionId, res);
+    const msfArgs = ['-q', '-r', scriptPath];
+    console.log(`[${req.user.email}] Starting Metasploit (CRITICAL TOOL - ARRAY MODE)`);
+    spawnToolSession('msfconsole', msfArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
-// John the Ripper - Password cracker
-app.post('/api/scan/john', (req, res) => {
+// John the Ripper - Password cracker (DUPLICATE)
+app.post('/api/scan/john', authenticateJWT, (req, res) => {
   const { hashFile, wordlist, format, sessionId } = req.body;
   
   if (!hashFile) {
     return res.status(400).json({ error: 'Hash file is required' });
   }
 
-  const johnArgs = [hashFile];
-  
-  if (wordlist) {
-    johnArgs.push('--wordlist=' + wordlist);
-  }
-  
-  if (format) {
-    johnArgs.push('--format=' + format);
-  }
+  try {
+    const safeSessionId = sanitizeSessionId(sessionId);
+    const validatedHashFile = validateFilePath(hashFile, '/tmp');
+    
+    const johnArgs = [validatedHashFile];
+    
+    if (wordlist) {
+      const validatedWordlist = validateFilePath(wordlist, '/usr/share/wordlists');
+      johnArgs.push('--wordlist=' + validatedWordlist);
+    }
+    
+    if (format) {
+      // Validate format is alphanumeric
+      if (!/^[a-z0-9_-]+$/i.test(format)) {
+        return res.status(400).json({ error: 'Invalid format' });
+      }
+      johnArgs.push('--format=' + format);
+    }
 
-  spawnToolSession('john', johnArgs, sessionId, res);
+    console.log(`[${req.user.email}] Starting John the Ripper`);
+    spawnToolSession('john', johnArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
-// Hashcat - GPU password cracker
-app.post('/api/scan/hashcat', (req, res) => {
+// Hashcat - GPU password cracker (DUPLICATE)
+app.post('/api/scan/hashcat', authenticateJWT, (req, res) => {
   const { hashFile, wordlist, mode = '0', sessionId } = req.body;
   
   if (!hashFile) {
     return res.status(400).json({ error: 'Hash file is required' });
   }
 
-  const hashcatArgs = [
-    '-m', mode,
-    '-a', '0',
-    hashFile,
-    wordlist || '/usr/share/wordlists/rockyou.txt',
-    '--force'
-  ];
+  try {
+    const safeSessionId = sanitizeSessionId(sessionId);
+    const validatedHashFile = validateFilePath(hashFile, '/tmp');
+    
+    let wordlistPath = '/usr/share/wordlists/rockyou.txt';
+    if (wordlist) {
+      wordlistPath = validateFilePath(wordlist, '/usr/share/wordlists');
+    }
+    
+    const hashcatArgs = [
+      '-m', mode,
+      '-a', '0',
+      validatedHashFile,
+      wordlistPath,
+      '--force'
+    ];
 
-  spawnToolSession('hashcat', hashcatArgs, sessionId, res);
+    console.log(`[${req.user.email}] Starting Hashcat`);
+    spawnToolSession('hashcat', hashcatArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
-// Recon-ng - Reconnaissance framework
-app.post('/api/scan/reconng', (req, res) => {
+// Recon-ng - Reconnaissance framework (DUPLICATE)
+app.post('/api/scan/reconng', authenticateJWT, (req, res) => {
   const { workspace, modules, target, sessionId } = req.body;
   
   if (!target || !modules) {
     return res.status(400).json({ error: 'Target and modules required' });
   }
 
-  const reconArgs = [
-    '-w', workspace || 'default',
-    '-m', modules,
-    '-x', `set SOURCE ${target}`
-  ];
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const reconArgs = [
+      '-w', workspace || 'default',
+      '-m', modules,
+      '-x', `set SOURCE ${validatedTarget}`
+    ];
 
-  spawnToolSession('recon-ng', reconArgs, sessionId, res);
+    console.log(`[${req.user.email}] Starting Recon-ng`);
+    spawnToolSession('recon-ng', reconArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Start server
