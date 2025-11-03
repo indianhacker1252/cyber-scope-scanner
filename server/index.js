@@ -364,7 +364,7 @@ app.post('/api/scan/sqlmap', authenticateJWT, async (req, res) => {
 });
 
 // DNS Lookup endpoint
-app.post('/api/scan/dns', async (req, res) => {
+app.post('/api/scan/dns', authenticateJWT, async (req, res) => {
   const { domain, sessionId } = req.body;
   
   try {
@@ -372,17 +372,21 @@ app.post('/api/scan/dns', async (req, res) => {
       return res.status(400).json({ error: 'Domain is required' });
     }
 
-    console.log(`Starting DNS lookup for: ${domain}`);
+    // Validate inputs
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+
+    console.log(`[${req.user.email}] Starting DNS lookup for: ${validatedDomain}`);
     
-    const dnsArgs = [domain, 'ANY'];
+    const dnsArgs = [validatedDomain, 'ANY'];
     const process = spawn('dig', dnsArgs);
-    activeSessions.set(sessionId, process);
-    sessionOutputs.set(sessionId, '');
+    activeSessions.set(safeSessionId, process);
+    sessionOutputs.set(safeSessionId, '');
 
     process.stdout.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
@@ -390,31 +394,31 @@ app.post('/api/scan/dns', async (req, res) => {
 
     process.stderr.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
     });
 
     process.on('close', (code) => {
-      const fullOutput = sessionOutputs.get(sessionId) || '';
-      broadcastToSession(sessionId, {
+      const fullOutput = sessionOutputs.get(safeSessionId) || '';
+      broadcastToSession(safeSessionId, {
         type: 'complete',
         result: {
-          id: sessionId,
+          id: safeSessionId,
           tool: 'dns',
-          target: domain,
+          target: validatedDomain,
           status: code === 0 ? 'completed' : 'failed',
           output: fullOutput,
           findings: parseDNSOutput(fullOutput)
         }
       });
-      activeSessions.delete(sessionId);
-      sessionOutputs.delete(sessionId);
+      activeSessions.delete(safeSessionId);
+      sessionOutputs.delete(safeSessionId);
     });
 
-    res.json({ success: true, sessionId });
+    res.json({ success: true, sessionId: safeSessionId });
   } catch (error) {
     console.error('DNS lookup error:', error);
     res.status(500).json({ error: error.message });
@@ -422,7 +426,7 @@ app.post('/api/scan/dns', async (req, res) => {
 });
 
 // WHOIS Lookup endpoint
-app.post('/api/scan/whois', async (req, res) => {
+app.post('/api/scan/whois', authenticateJWT, async (req, res) => {
   const { domain, sessionId } = req.body;
   
   try {
@@ -430,16 +434,20 @@ app.post('/api/scan/whois', async (req, res) => {
       return res.status(400).json({ error: 'Domain is required' });
     }
 
-    console.log(`Starting WHOIS lookup for: ${domain}`);
+    // Validate inputs
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+
+    console.log(`[${req.user.email}] Starting WHOIS lookup for: ${validatedDomain}`);
     
-    const process = spawn('whois', [domain]);
-    activeSessions.set(sessionId, process);
-    sessionOutputs.set(sessionId, '');
+    const process = spawn('whois', [validatedDomain]);
+    activeSessions.set(safeSessionId, process);
+    sessionOutputs.set(safeSessionId, '');
 
     process.stdout.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
@@ -447,24 +455,31 @@ app.post('/api/scan/whois', async (req, res) => {
 
     process.stderr.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
     });
 
     process.on('close', (code) => {
-      const fullOutput = sessionOutputs.get(sessionId) || '';
-      broadcastToSession(sessionId, {
+      const fullOutput = sessionOutputs.get(safeSessionId) || '';
+      broadcastToSession(safeSessionId, {
         type: 'complete',
         result: {
-          id: sessionId,
+          id: safeSessionId,
           tool: 'whois',
-          target: domain,
+          target: validatedDomain,
           status: code === 0 ? 'completed' : 'failed',
           output: fullOutput,
           findings: []
+        }
+      });
+      activeSessions.delete(safeSessionId);
+      sessionOutputs.delete(safeSessionId);
+    });
+
+    res.json({ success: true, sessionId: safeSessionId });
         }
       });
       activeSessions.delete(sessionId);
@@ -479,7 +494,7 @@ app.post('/api/scan/whois', async (req, res) => {
 });
 
 // SSL Certificate Analysis endpoint
-app.post('/api/scan/ssl', async (req, res) => {
+app.post('/api/scan/ssl', authenticateJWT, async (req, res) => {
   const { domain, sessionId } = req.body;
   
   try {
@@ -487,11 +502,15 @@ app.post('/api/scan/ssl', async (req, res) => {
       return res.status(400).json({ error: 'Domain is required' });
     }
 
-    console.log(`Starting SSL analysis for: ${domain}`);
+    // Validate inputs
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+
+    console.log(`[${req.user.email}] Starting SSL analysis for: ${validatedDomain}`);
     
-    const process = spawn('openssl', ['s_client', '-connect', `${domain}:443`, '-servername', domain]);
-    activeSessions.set(sessionId, process);
-    sessionOutputs.set(sessionId, '');
+    const process = spawn('openssl', ['s_client', '-connect', `${validatedDomain}:443`, '-servername', validatedDomain]);
+    activeSessions.set(safeSessionId, process);
+    sessionOutputs.set(safeSessionId, '');
 
     // Send empty input and close stdin
     process.stdin.write('\n');
@@ -499,8 +518,8 @@ app.post('/api/scan/ssl', async (req, res) => {
 
     process.stdout.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
@@ -508,38 +527,38 @@ app.post('/api/scan/ssl', async (req, res) => {
 
     process.stderr.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
     });
 
     process.on('close', (code) => {
-      const fullOutput = sessionOutputs.get(sessionId) || '';
-      broadcastToSession(sessionId, {
+      const fullOutput = sessionOutputs.get(safeSessionId) || '';
+      broadcastToSession(safeSessionId, {
         type: 'complete',
         result: {
-          id: sessionId,
+          id: safeSessionId,
           tool: 'ssl',
-          target: domain,
+          target: validatedDomain,
           status: 'completed',
           output: fullOutput,
           findings: parseSSLOutput(fullOutput)
         }
       });
-      activeSessions.delete(sessionId);
-      sessionOutputs.delete(sessionId);
+      activeSessions.delete(safeSessionId);
+      sessionOutputs.delete(safeSessionId);
     });
 
     // Timeout after 10 seconds
     setTimeout(() => {
-      if (activeSessions.has(sessionId)) {
+      if (activeSessions.has(safeSessionId)) {
         process.kill();
       }
     }, 10000);
 
-    res.json({ success: true, sessionId });
+    res.json({ success: true, sessionId: safeSessionId });
   } catch (error) {
     console.error('SSL analysis error:', error);
     res.status(500).json({ error: error.message });
@@ -747,26 +766,30 @@ app.post('/api/scan/whatweb', authenticateJWT, async (req, res) => {
 });
 
 // Amass scan endpoint
-app.post('/api/scan/amass', async (req, res) => {
+app.post('/api/scan/amass', authenticateJWT, async (req, res) => {
   const { domain, sessionId } = req.body;
   
   try {
+    // Validate inputs
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+
     // Check if amass is installed
     if (!checkTool('amass')) {
       return res.status(500).json({ error: 'Amass is not installed on this system' });
     }
 
-    const amassArgs = ['enum', '-d', domain];
-    console.log(`Starting Amass scan: amass ${amassArgs.join(' ')}`);
+    const amassArgs = ['enum', '-d', validatedDomain];
+    console.log(`[${req.user.email}] Starting Amass scan: amass ${amassArgs.join(' ')}`);
     
     const process = spawn('amass', amassArgs);
-    activeSessions.set(sessionId, process);
-    sessionOutputs.set(sessionId, '');
+    activeSessions.set(safeSessionId, process);
+    sessionOutputs.set(safeSessionId, '');
 
     process.stdout.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
@@ -774,31 +797,31 @@ app.post('/api/scan/amass', async (req, res) => {
 
     process.stderr.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
     });
 
     process.on('close', (code) => {
-      const fullOutput = sessionOutputs.get(sessionId) || '';
-      broadcastToSession(sessionId, {
+      const fullOutput = sessionOutputs.get(safeSessionId) || '';
+      broadcastToSession(safeSessionId, {
         type: 'complete',
         result: {
-          id: sessionId,
+          id: safeSessionId,
           tool: 'amass',
-          target: domain,
+          target: validatedDomain,
           status: code === 0 ? 'completed' : 'failed',
           output: fullOutput,
           findings: parseAmassOutput(fullOutput)
         }
       });
-      activeSessions.delete(sessionId);
-      sessionOutputs.delete(sessionId);
+      activeSessions.delete(safeSessionId);
+      sessionOutputs.delete(safeSessionId);
     });
 
-    res.json({ success: true, sessionId });
+    res.json({ success: true, sessionId: safeSessionId });
   } catch (error) {
     console.error('Amass scan error:', error);
     res.status(500).json({ error: error.message });
@@ -806,26 +829,30 @@ app.post('/api/scan/amass', async (req, res) => {
 });
 
 // Sublist3r scan endpoint
-app.post('/api/scan/sublist3r', async (req, res) => {
+app.post('/api/scan/sublist3r', authenticateJWT, async (req, res) => {
   const { domain, sessionId } = req.body;
   
   try {
+    // Validate inputs
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+
     // Check if sublist3r is installed  
     if (!checkTool('sublist3r')) {
       return res.status(500).json({ error: 'Sublist3r is not installed on this system' });
     }
 
-    const sublist3rArgs = ['-d', domain];
-    console.log(`Starting Sublist3r scan: sublist3r ${sublist3rArgs.join(' ')}`);
+    const sublist3rArgs = ['-d', validatedDomain];
+    console.log(`[${req.user.email}] Starting Sublist3r scan: sublist3r ${sublist3rArgs.join(' ')}`);
     
     const process = spawn('sublist3r', sublist3rArgs);
-    activeSessions.set(sessionId, process);
-    sessionOutputs.set(sessionId, '');
+    activeSessions.set(safeSessionId, process);
+    sessionOutputs.set(safeSessionId, '');
 
     process.stdout.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
@@ -833,31 +860,31 @@ app.post('/api/scan/sublist3r', async (req, res) => {
 
     process.stderr.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
     });
 
     process.on('close', (code) => {
-      const fullOutput = sessionOutputs.get(sessionId) || '';
-      broadcastToSession(sessionId, {
+      const fullOutput = sessionOutputs.get(safeSessionId) || '';
+      broadcastToSession(safeSessionId, {
         type: 'complete',
         result: {
-          id: sessionId,
+          id: safeSessionId,
           tool: 'sublist3r',
-          target: domain,
+          target: validatedDomain,
           status: code === 0 ? 'completed' : 'failed',
           output: fullOutput,
           findings: parseSublist3rOutput(fullOutput)
         }
       });
-      activeSessions.delete(sessionId);
-      sessionOutputs.delete(sessionId);
+      activeSessions.delete(safeSessionId);
+      sessionOutputs.delete(safeSessionId);
     });
 
-    res.json({ success: true, sessionId });
+    res.json({ success: true, sessionId: safeSessionId });
   } catch (error) {
     console.error('Sublist3r scan error:', error);
     res.status(500).json({ error: error.message });
@@ -1062,22 +1089,45 @@ function parseSublist3rOutput(output) {
 // ============================================================
 
 // Masscan - Ultra-fast port scanner
-app.post('/api/scan/masscan', (req, res) => {
+app.post('/api/scan/masscan', authenticateJWT, (req, res) => {
   const { target, ports = '1-65535', rate = '1000', sessionId } = req.body;
   
   if (!target) {
     return res.status(400).json({ error: 'Target is required' });
   }
 
+  // Validate inputs
+  const validatedTarget = validateTarget(target);
+  const safeSessionId = sanitizeSessionId(sessionId);
+
+  // Additional validation for Masscan
+  // Validate ports is numeric range
+  if (!/^\d+-\d+$/.test(ports)) {
+    return res.status(400).json({ error: 'Invalid port range format. Use format: 1-65535' });
+  }
+
+  // Validate rate is reasonable
+  const maxRate = 10000;
+  if (parseInt(rate) > maxRate) {
+    return res.status(400).json({ error: `Rate exceeds maximum allowed (${maxRate})` });
+  }
+
+  // Validate target is not too broad
+  if (validatedTarget.includes('/8') || validatedTarget === '0.0.0.0' || validatedTarget.includes('0.0.0.0/')) {
+    return res.status(400).json({ error: 'Target range too broad. Use more specific targets.' });
+  }
+
+  console.log(`[${req.user.email}] Starting Masscan: ${validatedTarget} ports ${ports} rate ${rate}`);
+
   const masscanArgs = [
     '-p', ports,
     '--rate', rate,
-    target,
+    validatedTarget,
     '--wait', '0',
     '--open'
   ];
 
-  spawnToolSession('masscan', masscanArgs, sessionId, res);
+  spawnToolSession('masscan', masscanArgs, safeSessionId, res);
 });
 
 // Hydra - Password cracking
