@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,7 +13,28 @@ serve(async (req) => {
   }
 
   try {
-    const { query, type } = await req.json();
+    const requestBody = await req.json();
+    
+    // Input validation schema
+    const schema = z.object({
+      query: z.string()
+        .min(1, "Query is required")
+        .max(5000, "Query too long (max 5000 characters)"),
+      type: z.enum(['ioc-analysis', 'malware-analysis', 'threat-hunting', 'vulnerability-intel'], {
+        errorMap: () => ({ message: "Invalid analysis type" })
+      })
+    });
+
+    const validation = schema.safeParse(requestBody);
+    if (!validation.success) {
+      console.error('Validation error:', validation.error);
+      return new Response(
+        JSON.stringify({ error: 'Invalid input', details: validation.error.issues }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { query, type } = validation.data;
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!LOVABLE_API_KEY) {

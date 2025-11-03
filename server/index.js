@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const app = express();
 const server = createServer(app);
@@ -15,6 +16,69 @@ const wss = new WebSocketServer({ server });
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// JWT Authentication middleware
+const authenticateJWT = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  const token = authHeader.substring(7);
+  
+  // Verify JWT token with Supabase
+  // For now, we'll implement a basic check - in production, verify with Supabase
+  if (!token || token.length < 20) {
+    return res.status(401).json({ error: 'Invalid authentication token' });
+  }
+  
+  // Store user info from token for logging (in production, decode JWT properly)
+  req.user = { token };
+  next();
+};
+
+// Input validation helpers
+const validateTarget = (target) => {
+  if (!target || typeof target !== 'string') {
+    throw new Error('Invalid target');
+  }
+  // Allow only alphanumeric, dots, hyphens, colons (for ports), and slashes (for URLs)
+  if (!/^[a-zA-Z0-9.:\/-]+$/.test(target)) {
+    throw new Error('Target contains invalid characters');
+  }
+  if (target.length > 500) {
+    throw new Error('Target too long');
+  }
+  return target;
+};
+
+const validateFilePath = (filePath, allowedDir = '/usr/share/wordlists') => {
+  if (!filePath || typeof filePath !== 'string') {
+    throw new Error('Invalid file path');
+  }
+  
+  // Remove path traversal attempts
+  const basename = path.basename(filePath);
+  const resolvedPath = path.resolve(allowedDir, basename);
+  
+  // Ensure the resolved path is within the allowed directory
+  if (!resolvedPath.startsWith(path.resolve(allowedDir))) {
+    throw new Error('Path traversal attempt detected');
+  }
+  
+  // Check file exists
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error('File not found');
+  }
+  
+  return resolvedPath;
+};
+
+const sanitizeSessionId = () => {
+  // Generate secure random session ID instead of using user input
+  return crypto.randomUUID();
+};
 
 // Active scan sessions
 const activeSessions = new Map();
@@ -58,31 +122,30 @@ function checkTool(toolName) {
 }
 
 // Nmap scan endpoint
-app.post('/api/scan/nmap', async (req, res) => {
-  const { target, scanType, sessionId } = req.body;
+app.post('/api/scan/nmap', authenticateJWT, async (req, res) => {
+  const { target, scanType } = req.body;
   
-  if (!target) {
-    return res.status(400).json({ error: 'Target is required' });
-  }
-
   try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId();
+
     // Check if nmap is installed
     if (!checkTool('nmap')) {
-      return res.status(500).json({ error: 'Nmap is not installed on this system' });
+      return res.status(503).json({ error: 'Service temporarily unavailable' });
     }
 
-    const nmapArgs = buildNmapArgs(target, scanType);
-    console.log(`Starting Nmap scan: nmap ${nmapArgs.join(' ')}`);
+    const nmapArgs = buildNmapArgs(validatedTarget, scanType);
+    console.log(`[${req.user.token.substring(0, 10)}...] Starting Nmap scan on ${validatedTarget}`);
     
     const process = spawn('nmap', nmapArgs);
-    activeSessions.set(sessionId, process);
-    sessionOutputs.set(sessionId, '');
+    activeSessions.set(safeSessionId, process);
+    sessionOutputs.set(safeSessionId, '');
 
     // Handle process output
     process.stdout.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });
@@ -90,8 +153,8 @@ app.post('/api/scan/nmap', async (req, res) => {
 
     process.stderr.on('data', (data) => {
       const output = data.toString();
-      sessionOutputs.set(sessionId, sessionOutputs.get(sessionId) + output);
-      broadcastToSession(sessionId, {
+      sessionOutputs.set(safeSessionId, sessionOutputs.get(safeSessionId) + output);
+      broadcastToSession(safeSessionId, {
         type: 'output',
         content: output
       });

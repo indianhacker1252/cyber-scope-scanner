@@ -14,3 +14,10 @@ verify_jwt = true
 
 [functions.security-advisor]
 verify_jwt = true
+
+[functions.openai-proxy]
+verify_jwt = true
+
+[functions.exa-proxy]
+verify_jwt = true
+

@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,7 +13,32 @@ serve(async (req) => {
   }
 
   try {
-    const { domain, task } = await req.json();
+    const requestBody = await req.json();
+    
+    // Input validation schema
+    const schema = z.object({
+      domain: z.enum([
+        'network-security', 'incident-response', 'cloud-security', 'application-security',
+        'cryptography', 'compliance', 'threat-intelligence', 'forensics', 'iam',
+        'devsecops', 'social-engineering', 'siem', 'risk-management'
+      ], {
+        errorMap: () => ({ message: "Invalid domain" })
+      }),
+      task: z.string()
+        .min(1, "Task is required")
+        .max(2000, "Task too long (max 2000 characters)")
+    });
+
+    const validation = schema.safeParse(requestBody);
+    if (!validation.success) {
+      console.error('Validation error:', validation.error);
+      return new Response(
+        JSON.stringify({ error: 'Invalid input', details: validation.error.issues }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { domain, task } = validation.data;
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!LOVABLE_API_KEY) {

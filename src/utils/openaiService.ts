@@ -1,160 +1,115 @@
-import OpenAI from 'openai';
+import { supabase } from '@/integrations/supabase/client';
 
 class OpenAIService {
-  private client: OpenAI | null = null;
-  private apiKey: string | null = null;
-
-  constructor() {
-    // Check for API key in localStorage
-    this.apiKey = localStorage.getItem('openai_api_key');
-    if (this.apiKey) {
-      this.initializeClient();
-    }
-  }
-
-  private initializeClient() {
-    if (this.apiKey) {
-      this.client = new OpenAI({
-        apiKey: this.apiKey,
-        dangerouslyAllowBrowser: true
-      });
-    }
-  }
-
-  setApiKey(apiKey: string) {
-    this.apiKey = apiKey;
-    localStorage.setItem('openai_api_key', apiKey);
-    this.initializeClient();
-  }
-
-  getApiKey() {
-    return this.apiKey;
-  }
-
-  hasApiKey() {
-    return !!this.apiKey;
-  }
-
-  getClient() {
-    return this.client;
-  }
-
-  clearApiKey() {
-    this.apiKey = null;
-    localStorage.removeItem('openai_api_key');
-    this.client = null;
-  }
-
   async analyzeVulnerabilities(scanResults: any[]) {
-    if (!this.client) {
-      throw new Error('OpenAI API key not configured');
-    }
-
-    const vulnerabilityData = scanResults.map(result => ({
-      tool: result.tool,
-      target: result.target,
-      findings: result.findings,
-      output: result.output?.substring(0, 2000) // Limit output length
-    }));
-
-    const prompt = `
-You are a cybersecurity expert. Analyze the following vulnerability scan results and provide a comprehensive security assessment:
-
-Scan Results:
-${JSON.stringify(vulnerabilityData, null, 2)}
-
-Please provide:
-1. Executive Summary
-2. Critical Vulnerabilities (if any)
-3. Risk Assessment (High/Medium/Low)
-4. Detailed Analysis of each finding
-5. Remediation Recommendations
-6. Attack Vectors that could exploit these vulnerabilities
-7. Compliance Impact (OWASP, NIST, etc.)
-
-Format your response in clear sections with actionable insights.
-`;
-
-    const completion = await this.client.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 2000,
-      temperature: 0.3
+    const { data, error } = await supabase.functions.invoke('openai-proxy', {
+      body: {
+        action: 'analyze-vulnerabilities',
+        data: { scanResults }
+      }
     });
 
-    return completion.choices[0]?.message?.content || 'Analysis failed';
+    if (error) {
+      console.error('OpenAI proxy error:', error);
+      throw new Error('Failed to analyze vulnerabilities');
+    }
+
+    return data.result;
   }
 
   async generatePayloads(vulnerabilityType: string, target: string, context?: string) {
-    if (!this.client) {
-      throw new Error('OpenAI API key not configured');
-    }
-
-    const prompt = `
-You are a penetration testing expert. Generate modern, effective payloads for testing the following vulnerability:
-
-Vulnerability Type: ${vulnerabilityType}
-Target: ${target}
-Context: ${context || 'General testing'}
-
-Generate payloads for:
-1. Initial Discovery/Detection
-2. Exploitation Attempts
-3. Privilege Escalation (if applicable)
-4. Data Extraction (if applicable)
-5. Persistence (if applicable)
-
-Important: 
-- Provide payloads for educational/authorized testing only
-- Include detection evasion techniques
-- Explain the purpose of each payload
-- Include both manual and automated testing approaches
-- Focus on latest techniques (2024)
-
-Format as JSON with categories and explanations.
-`;
-
-    const completion = await this.client.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1500,
-      temperature: 0.7
+    const { data, error } = await supabase.functions.invoke('openai-proxy', {
+      body: {
+        action: 'generate-payloads',
+        data: { vulnerabilityType, target, context }
+      }
     });
 
-    return completion.choices[0]?.message?.content || 'Payload generation failed';
+    if (error) {
+      console.error('OpenAI proxy error:', error);
+      throw new Error('Failed to generate payloads');
+    }
+
+    return data.result;
   }
 
   async generateTechnicalReport(analysisData: any, scanResults: any[]) {
-    if (!this.client) {
-      throw new Error('OpenAI API key not configured');
-    }
-
-    const prompt = `
-Generate a professional penetration testing report based on the following data:
-
-Analysis: ${analysisData}
-Scan Results: ${JSON.stringify(scanResults.slice(0, 3), null, 2)}
-
-Create a comprehensive report with:
-1. Executive Summary
-2. Methodology
-3. Findings Summary Table
-4. Detailed Technical Findings
-5. Risk Matrix
-6. Recommendations
-7. Appendices
-
-Use professional cybersecurity report formatting and include CVSS scores where applicable.
-`;
-
-    const completion = await this.client.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 2500,
-      temperature: 0.2
+    const { data, error } = await supabase.functions.invoke('openai-proxy', {
+      body: {
+        action: 'generate-report',
+        data: { analysisData, scanResults }
+      }
     });
 
-    return completion.choices[0]?.message?.content || 'Report generation failed';
+    if (error) {
+      console.error('OpenAI proxy error:', error);
+      throw new Error('Failed to generate report');
+    }
+
+    return data.result;
+  }
+
+  async generateCompletion(prompt: string, options?: { maxTokens?: number; temperature?: number }) {
+    // This method provides backward compatibility for components that need direct chat completion
+    const { data, error } = await supabase.functions.invoke('openai-proxy', {
+      body: {
+        action: 'custom-completion',
+        data: { 
+          prompt,
+          maxTokens: options?.maxTokens || 3000,
+          temperature: options?.temperature || 0.3
+        }
+      }
+    });
+
+    if (error) {
+      console.error('OpenAI proxy error:', error);
+      throw new Error('Failed to generate completion');
+    }
+
+    return data.result;
+  }
+
+  // Legacy methods for backward compatibility - now throw errors directing to secure implementation
+  hasApiKey() {
+    return false;
+  }
+
+  getApiKey() {
+    return null;
+  }
+
+  setApiKey(apiKey: string) {
+    throw new Error('API keys are now securely managed on the backend. This method is deprecated.');
+  }
+
+  clearApiKey() {
+    // No-op for backward compatibility
+  }
+
+  getClient() {
+    // Return a proxy object that mimics the OpenAI client interface
+    return {
+      chat: {
+        completions: {
+          create: async (params: any) => {
+            const prompt = params.messages?.map((m: any) => m.content).join('\n') || '';
+            const result = await this.generateCompletion(prompt, {
+              maxTokens: params.max_tokens,
+              temperature: params.temperature
+            });
+            
+            return {
+              choices: [{
+                message: {
+                  content: result
+                }
+              }]
+            };
+          }
+        }
+      }
+    };
   }
 }
 

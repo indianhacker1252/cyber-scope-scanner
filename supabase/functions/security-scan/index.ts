@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,7 +13,30 @@ serve(async (req) => {
   }
 
   try {
-    const { target, scanType, options } = await req.json();
+    const requestBody = await req.json();
+    
+    // Input validation schema
+    const schema = z.object({
+      target: z.string()
+        .min(1, "Target is required")
+        .max(500, "Target too long")
+        .regex(/^[a-zA-Z0-9.-]+$/, "Invalid target format - only alphanumeric, dots, and hyphens allowed"),
+      scanType: z.enum(['port', 'ssl', 'headers', 'dns'], {
+        errorMap: () => ({ message: "Invalid scan type" })
+      }),
+      options: z.record(z.any()).optional()
+    });
+
+    const validation = schema.safeParse(requestBody);
+    if (!validation.success) {
+      console.error('Validation error:', validation.error);
+      return new Response(
+        JSON.stringify({ error: 'Invalid input', details: validation.error.issues }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { target, scanType, options } = validation.data;
     
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
