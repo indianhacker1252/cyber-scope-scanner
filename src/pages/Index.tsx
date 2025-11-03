@@ -29,6 +29,8 @@ import VAPTReports from "@/components/dashboard/VAPTReports";
 import PentestGPT from "@/components/dashboard/PentestGPT";
 import { AutomatedVAPT } from "@/components/dashboard/AutomatedVAPT";
 import { ExaInsights } from "@/components/dashboard/ExaInsights";
+import { ThreatIntelligence } from "@/components/security/ThreatIntelligence";
+import { SecurityAdvisor } from "@/components/security/SecurityAdvisor";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -41,6 +43,10 @@ const Index = () => {
         return <DashboardOverview />;
       case "target":
         return <TargetInput onNavigateToResults={() => setActiveSection("scan-results")} />;
+      case "threat-intel":
+        return <ThreatIntelligence />;
+      case "security-advisor":
+        return <SecurityAdvisor />;
       case "advanced-scanning":
         return <AdvancedScanning />;
       case "advanced-tools":

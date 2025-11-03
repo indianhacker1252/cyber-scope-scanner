@@ -1,1 +1,16 @@
 project_id = "uyqzmpjcazxakyzjkfxc"
+
+[functions.auth-login]
+verify_jwt = false
+
+[functions.create-default-user]
+verify_jwt = false
+
+[functions.security-scan]
+verify_jwt = true
+
+[functions.threat-intelligence]
+verify_jwt = true
+
+[functions.security-advisor]
+verify_jwt = true
