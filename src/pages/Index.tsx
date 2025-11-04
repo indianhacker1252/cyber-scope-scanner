@@ -28,6 +28,7 @@ import AgentManagement from "@/components/dashboard/AgentManagement";
 import VAPTReports from "@/components/dashboard/VAPTReports";
 import PentestGPT from "@/components/dashboard/PentestGPT";
 import { AutomatedVAPT } from "@/components/dashboard/AutomatedVAPT";
+import AutonomousHacking from "@/components/dashboard/AutonomousHacking";
 import { ExaInsights } from "@/components/dashboard/ExaInsights";
 import { ThreatIntelligence } from "@/components/security/ThreatIntelligence";
 import { SecurityAdvisor } from "@/components/security/SecurityAdvisor";
@@ -67,6 +68,8 @@ const Index = () => {
         return <PentestGPT />;
       case "automated-vapt":
         return <AutomatedVAPT />;
+      case "autonomous":
+        return <AutonomousHacking />;
       case "exa-insights":
         return <ExaInsights />;
       case "code-analysis":

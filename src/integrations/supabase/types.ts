@@ -14,6 +14,125 @@ export type Database = {
   }
   public: {
     Tables: {
+      attack_attempts: {
+        Row: {
+          attack_type: string
+          created_at: string
+          error_message: string | null
+          id: string
+          metadata: Json | null
+          output: string | null
+          payload: string | null
+          success: boolean
+          target: string
+          technique: string
+          user_id: string
+        }
+        Insert: {
+          attack_type: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          output?: string | null
+          payload?: string | null
+          success?: boolean
+          target: string
+          technique: string
+          user_id: string
+        }
+        Update: {
+          attack_type?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          output?: string | null
+          payload?: string | null
+          success?: boolean
+          target?: string
+          technique?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      attack_chains: {
+        Row: {
+          attack_sequence: Json
+          chain_name: string
+          created_at: string
+          current_step: number | null
+          id: string
+          results: Json | null
+          status: string | null
+          target: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attack_sequence: Json
+          chain_name: string
+          created_at?: string
+          current_step?: number | null
+          id?: string
+          results?: Json | null
+          status?: string | null
+          target: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attack_sequence?: Json
+          chain_name?: string
+          created_at?: string
+          current_step?: number | null
+          id?: string
+          results?: Json | null
+          status?: string | null
+          target?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      attack_learnings: {
+        Row: {
+          adaptation_strategy: string
+          ai_analysis: string | null
+          attack_attempt_id: string | null
+          created_at: string
+          failure_reason: string
+          id: string
+          success_rate: number | null
+        }
+        Insert: {
+          adaptation_strategy: string
+          ai_analysis?: string | null
+          attack_attempt_id?: string | null
+          created_at?: string
+          failure_reason: string
+          id?: string
+          success_rate?: number | null
+        }
+        Update: {
+          adaptation_strategy?: string
+          ai_analysis?: string | null
+          attack_attempt_id?: string | null
+          created_at?: string
+          failure_reason?: string
+          id?: string
+          success_rate?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attack_learnings_attack_attempt_id_fkey"
+            columns: ["attack_attempt_id"]
+            isOneToOne: false
+            referencedRelation: "attack_attempts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       login_attempts: {
         Row: {
           attempted_at: string
@@ -101,6 +220,42 @@ export type Database = {
           target?: string
           user_id?: string
           vulnerability_name?: string | null
+        }
+        Relationships: []
+      }
+      target_intelligence: {
+        Row: {
+          ai_recommendations: Json | null
+          attack_surface: Json | null
+          id: string
+          last_scanned: string
+          target: string
+          tech_stack: Json | null
+          user_id: string
+          vulnerabilities: Json | null
+          weak_points: Json | null
+        }
+        Insert: {
+          ai_recommendations?: Json | null
+          attack_surface?: Json | null
+          id?: string
+          last_scanned?: string
+          target: string
+          tech_stack?: Json | null
+          user_id: string
+          vulnerabilities?: Json | null
+          weak_points?: Json | null
+        }
+        Update: {
+          ai_recommendations?: Json | null
+          attack_surface?: Json | null
+          id?: string
+          last_scanned?: string
+          target?: string
+          tech_stack?: Json | null
+          user_id?: string
+          vulnerabilities?: Json | null
+          weak_points?: Json | null
         }
         Relationships: []
       }

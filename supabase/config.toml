@@ -21,3 +21,9 @@ verify_jwt = true
 [functions.exa-proxy]
 verify_jwt = true
 
+[functions.ai-attack-orchestrator]
+verify_jwt = true
+
+[functions.autonomous-attack-executor]
+verify_jwt = true
+
