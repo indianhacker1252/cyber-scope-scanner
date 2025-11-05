@@ -32,6 +32,7 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
 const sections = [
     { id: "dashboard", label: "Dashboard", icon: Activity },
     { id: "target", label: "Target Input", icon: Target },
+    { id: "attack-visualization", label: "🎯 Live Visualization", icon: Activity },
     { id: "threat-intel", label: "Threat Intelligence", icon: Brain },
     { id: "security-advisor", label: "Security Advisor", icon: Shield },
     { id: "advanced-scanning", label: "Advanced Scanning", icon: Terminal },
