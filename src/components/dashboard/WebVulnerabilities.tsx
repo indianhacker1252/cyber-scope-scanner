@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
   Database, 
   Code, 
@@ -20,6 +22,8 @@ import {
   Zap
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useKaliTools } from "@/hooks/useKaliTools";
+import { useState } from "react";
 
 interface WebVulnerabilitiesProps {
   onNavigateToResults?: () => void;
@@ -27,6 +31,28 @@ interface WebVulnerabilitiesProps {
 
 const WebVulnerabilities = ({ onNavigateToResults }: WebVulnerabilitiesProps) => {
   const { toast } = useToast();
+  const { runSQLInjectionTest, runWebScan, activeSessions } = useKaliTools();
+  const [target, setTarget] = useState("");
+  const handleSQLInjection = async () => {
+    if (!target) {
+      toast({ title: "Error", description: "Please enter a target URL", variant: "destructive" });
+      return;
+    }
+    await runSQLInjectionTest(target, "-a");
+    toast({ title: "SQL Injection Test Started", description: `Testing ${target}` });
+    if (onNavigateToResults) setTimeout(() => onNavigateToResults(), 1000);
+  };
+
+  const handleXSSTest = async () => {
+    if (!target) {
+      toast({ title: "Error", description: "Please enter a target URL", variant: "destructive" });
+      return;
+    }
+    await runWebScan(target);
+    toast({ title: "XSS Test Started", description: `Testing ${target}` });
+    if (onNavigateToResults) setTimeout(() => onNavigateToResults(), 1000);
+  };
+
   const vulnerabilityTests = [
     {
       id: "sql-injection",
@@ -148,6 +174,8 @@ const WebVulnerabilities = ({ onNavigateToResults }: WebVulnerabilitiesProps) =>
     }
   };
 
+  const runningSessions = activeSessions.filter(s => s.status === 'running');
+
   return (
     <div className="space-y-6">
       <Card>
@@ -161,6 +189,17 @@ const WebVulnerabilities = ({ onNavigateToResults }: WebVulnerabilitiesProps) =>
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="space-y-4 mb-4">
+            <div>
+              <Label htmlFor="target">Target URL</Label>
+              <Input
+                id="target"
+                placeholder="https://example.com"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+              />
+            </div>
+          </div>
           <Tabs defaultValue="overview" className="w-full">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -172,10 +211,10 @@ const WebVulnerabilities = ({ onNavigateToResults }: WebVulnerabilitiesProps) =>
             <TabsContent value="overview" className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { label: "Tests Running", value: "0", color: "text-warning" },
-                  { label: "Critical Findings", value: "0", color: "text-destructive" },
-                  { label: "Completed Tests", value: "0", color: "text-success" },
-                  { label: "Total Findings", value: "0", color: "text-primary" }
+                  { label: "Tests Running", value: runningSessions.length.toString(), color: "text-warning" },
+                  { label: "Critical Findings", value: activeSessions.filter(s => s.status === 'completed').length.toString(), color: "text-destructive" },
+                  { label: "Completed Tests", value: activeSessions.filter(s => s.status === 'completed').length.toString(), color: "text-success" },
+                  { label: "Total Findings", value: activeSessions.reduce((acc, s) => acc + s.findings.length, 0).toString(), color: "text-primary" }
                 ].map((stat, index) => (
                   <Card key={index}>
                     <CardContent className="p-4">
@@ -288,48 +327,18 @@ const WebVulnerabilities = ({ onNavigateToResults }: WebVulnerabilitiesProps) =>
                                    <Eye className="h-4 w-4 mr-1" />
                                    View Results
                                  </Button>
-                                 {test.status === "running" ? (
-                                   <Button 
-                                     size="sm" 
-                                     variant="outline"
-                                     onClick={() => {
-                                       toast({
-                                         title: "Test Paused",
-                                         description: `${test.name} test has been paused`,
-                                       });
-                                     }}
-                                   >
-                                     <Pause className="h-4 w-4 mr-1" />
-                                     Pause
-                                   </Button>
-                                 ) : test.status === "pending" ? (
-                                   <Button 
-                                     size="sm"
-                                     onClick={() => {
-                                       toast({
-                                         title: "Test Started",
-                                         description: `${test.name} vulnerability test initiated`,
-                                       });
-                                     }}
-                                   >
-                                     <Play className="h-4 w-4 mr-1" />
-                                     Start
-                                   </Button>
-                                 ) : (
-                                   <Button 
-                                     size="sm" 
-                                     variant="outline"
-                                     onClick={() => {
-                                       toast({
-                                         title: "Test Restarted",
-                                         description: `${test.name} test is being rerun`,
-                                       });
-                                     }}
-                                   >
-                                     <RotateCcw className="h-4 w-4 mr-1" />
-                                     Rerun
-                                   </Button>
-                                 )}
+                                  <Button 
+                                    size="sm"
+                                    onClick={() => {
+                                      if (test.id === 'sql-injection') handleSQLInjection();
+                                      else if (test.id === 'xss') handleXSSTest();
+                                      else handleXSSTest();
+                                    }}
+                                    disabled={!target}
+                                  >
+                                    <Play className="h-4 w-4 mr-1" />
+                                    Start Test
+                                  </Button>
                               </div>
                             </div>
                           </div>

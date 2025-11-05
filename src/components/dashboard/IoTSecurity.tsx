@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { 
   Wifi, 
   Router, 
@@ -14,58 +13,25 @@ import {
   Radio,
   Shield,
   AlertTriangle,
-  Play,
-  Pause,
-  RotateCcw,
-  Eye,
   Network,
   Lock,
   Unlock,
-  Bug,
   Zap
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useKaliTools } from "@/hooks/useKaliTools";
 
 const IoTSecurity = () => {
   const { toast } = useToast();
+  const { runNetworkScan, activeSessions } = useKaliTools();
   const [targetIP, setTargetIP] = useState("");
-  const [scanResults, setScanResults] = useState<any[]>([]);
-  const [activeScans, setActiveScans] = useState<any[]>([]);
 
   const iotDeviceTypes = [
-    {
-      id: "router",
-      name: "Router/Gateway",
-      icon: Router,
-      description: "Network routers, gateways, and access points",
-      vulnerabilities: ["Default credentials", "Firmware vulnerabilities", "Weak encryption"],
-      status: "pending"
-    },
-    {
-      id: "camera",
-      name: "IP Cameras",
-      icon: Camera,
-      description: "Security cameras and surveillance systems",
-      vulnerabilities: ["Insecure streaming", "Authentication bypass", "Privacy issues"],
-      status: "pending"
-    },
-    {
-      id: "smart-home",
-      name: "Smart Home Devices",
-      icon: Smartphone,
-      description: "Smart thermostats, lights, locks, and appliances",
-      vulnerabilities: ["Weak pairing", "Command injection", "Privacy leaks"],
-      status: "pending"
-    },
-    {
-      id: "industrial",
-      name: "Industrial IoT",
-      icon: Zap,
-      description: "SCADA systems, PLCs, and industrial controllers",
-      vulnerabilities: ["Unencrypted protocols", "Remote access", "System disruption"],
-      status: "pending"
-    }
+    { id: "router", name: "Router/Gateway", icon: Router, vulnerabilities: ["Default credentials", "Firmware vulnerabilities", "Weak encryption"] },
+    { id: "camera", name: "IP Cameras", icon: Camera, vulnerabilities: ["Insecure streaming", "Authentication bypass", "Privacy issues"] },
+    { id: "smart-home", name: "Smart Home Devices", icon: Smartphone, vulnerabilities: ["Weak pairing", "Command injection", "Privacy leaks"] },
+    { id: "industrial", name: "Industrial IoT", icon: Zap, vulnerabilities: ["Unencrypted protocols", "Remote access", "System disruption"] }
   ];
 
   const communicationProtocols = [
@@ -77,63 +43,14 @@ const IoTSecurity = () => {
     { name: "Cellular", icon: Smartphone, secure: true }
   ];
 
-  const startIoTScan = (deviceType: string) => {
-    if (!targetIP && deviceType !== "discovery") {
-      toast({
-        title: "Target Required",
-        description: "Please enter a target IP address or range",
-        variant: "destructive"
-      });
+  const startIoTScan = async (deviceType: string) => {
+    if (!targetIP) {
+      toast({ title: "Target Required", description: "Enter IP address or range", variant: "destructive" });
       return;
     }
 
-    const newScan = {
-      id: Date.now(),
-      type: deviceType,
-      target: targetIP || "Auto Discovery",
-      status: "running",
-      progress: 0,
-      findings: 0,
-      startTime: new Date()
-    };
-
-    setActiveScans(prev => [...prev, newScan]);
-
-    // Simulate scan progress
-    const interval = setInterval(() => {
-      setActiveScans(prev => prev.map(scan => {
-        if (scan.id === newScan.id && scan.progress < 100) {
-          const newProgress = Math.min(scan.progress + Math.random() * 20, 100);
-          if (newProgress >= 100) {
-            setScanResults(prevResults => [...prevResults, {
-              ...scan,
-              status: "completed",
-              progress: 100,
-              findings: Math.floor(Math.random() * 10) + 1,
-              vulnerabilities: iotDeviceTypes.find(d => d.id === deviceType)?.vulnerabilities || []
-            }]);
-            clearInterval(interval);
-          }
-          return { ...scan, progress: newProgress };
-        }
-        return scan;
-      }));
-    }, 1000);
-
-    toast({
-      title: "IoT Scan Started",
-      description: `Scanning for ${deviceType} vulnerabilities`,
-    });
-  };
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case "critical": return "bg-destructive/20 text-destructive";
-      case "high": return "bg-destructive/10 text-destructive";
-      case "medium": return "bg-warning/20 text-warning";
-      case "low": return "bg-success/20 text-success";
-      default: return "bg-muted text-muted-foreground";
-    }
+    await runNetworkScan(targetIP, 'service-detection');
+    toast({ title: "IoT Scan Started", description: `Scanning ${deviceType} at ${targetIP}` });
   };
 
   return (
@@ -145,16 +62,15 @@ const IoTSecurity = () => {
             IoT Security Assessment
           </CardTitle>
           <CardDescription>
-            Comprehensive security testing for Internet of Things devices and networks
+            Real security testing for IoT devices using Kali Linux tools
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="discovery" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="discovery">Discovery</TabsTrigger>
               <TabsTrigger value="devices">Device Testing</TabsTrigger>
               <TabsTrigger value="protocols">Protocols</TabsTrigger>
-              <TabsTrigger value="firmware">Firmware</TabsTrigger>
               <TabsTrigger value="results">Results</TabsTrigger>
             </TabsList>
 
@@ -183,7 +99,7 @@ const IoTSecurity = () => {
                         <Network className="h-5 w-5 text-primary" />
                         <div>
                           <p className="font-medium">Network Scanning</p>
-                          <p className="text-sm text-muted-foreground">Discover IoT devices on network</p>
+                          <p className="text-sm text-muted-foreground">Nmap IoT discovery</p>
                         </div>
                       </div>
                     </CardContent>
@@ -195,7 +111,7 @@ const IoTSecurity = () => {
                         <Wifi className="h-5 w-5 text-primary" />
                         <div>
                           <p className="font-medium">Wireless Analysis</p>
-                          <p className="text-sm text-muted-foreground">WiFi security assessment</p>
+                          <p className="text-sm text-muted-foreground">WiFi security</p>
                         </div>
                       </div>
                     </CardContent>
@@ -207,7 +123,7 @@ const IoTSecurity = () => {
                         <Bluetooth className="h-5 w-5 text-primary" />
                         <div>
                           <p className="font-medium">Bluetooth Discovery</p>
-                          <p className="text-sm text-muted-foreground">BLE and classic Bluetooth</p>
+                          <p className="text-sm text-muted-foreground">BLE scanning</p>
                         </div>
                       </div>
                     </CardContent>
@@ -226,10 +142,8 @@ const IoTSecurity = () => {
                           <device.icon className="h-6 w-6 mr-3 text-primary" />
                           <div>
                             <h3 className="font-semibold">{device.name}</h3>
-                            <p className="text-sm text-muted-foreground">{device.description}</p>
                           </div>
                         </div>
-                        <Badge variant="outline">{device.status}</Badge>
                       </div>
                       
                       <div className="space-y-3">
@@ -244,16 +158,9 @@ const IoTSecurity = () => {
                           </div>
                         </div>
                         
-                        <div className="flex justify-end space-x-2">
-                          <Button size="sm" variant="outline">
-                            <Eye className="h-4 w-4 mr-1" />
-                            View Details
-                          </Button>
-                          <Button size="sm" onClick={() => startIoTScan(device.id)}>
-                            <Play className="h-4 w-4 mr-1" />
-                            Test Device
-                          </Button>
-                        </div>
+                        <Button size="sm" onClick={() => startIoTScan(device.id)} disabled={!targetIP}>
+                          Test {device.name}
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -272,7 +179,7 @@ const IoTSecurity = () => {
                           <div>
                             <p className="font-medium">{protocol.name}</p>
                             <p className="text-sm text-muted-foreground">
-                              {protocol.secure ? "Generally secure" : "Requires security assessment"}
+                              {protocol.secure ? "Generally secure" : "Requires assessment"}
                             </p>
                           </div>
                         </div>
@@ -288,45 +195,29 @@ const IoTSecurity = () => {
               </div>
             </TabsContent>
 
-            <TabsContent value="firmware" className="space-y-4">
-              <div className="text-center p-8">
-                <Bug className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-lg font-medium mb-2">Firmware Analysis</p>
-                <p className="text-muted-foreground mb-4">
-                  Extract and analyze firmware for security vulnerabilities
-                </p>
-                <Button variant="outline">
-                  <Shield className="h-4 w-4 mr-2" />
-                  Upload Firmware
-                </Button>
-              </div>
-            </TabsContent>
-
             <TabsContent value="results" className="space-y-4">
-              {scanResults.length === 0 ? (
+              {activeSessions.length === 0 ? (
                 <div className="text-center p-8">
                   <Router className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                   <p className="text-lg font-medium mb-2">No Scan Results</p>
-                  <p className="text-muted-foreground">Start an IoT security scan to see results here</p>
+                  <p className="text-muted-foreground">Start an IoT scan to see results</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {scanResults.map((result) => (
-                    <Card key={result.id}>
+                  {activeSessions.map((session) => (
+                    <Card key={session.id}>
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-3">
                           <div>
-                            <h4 className="font-medium">{result.type} Scan</h4>
-                            <p className="text-sm text-muted-foreground">Target: {result.target}</p>
+                            <h4 className="font-medium">{session.tool} Scan</h4>
+                            <p className="text-sm text-muted-foreground">Target: {session.target}</p>
                           </div>
-                          <Badge className={getSeverityColor("high")}>
-                            {result.findings} issues found
-                          </Badge>
+                          <Badge>{session.findings.length} findings</Badge>
                         </div>
                         <div className="space-y-2">
-                          {result.vulnerabilities.map((vuln: string, index: number) => (
+                          {session.findings.slice(0, 3).map((finding: any, index: number) => (
                             <div key={index} className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                              <span className="text-sm">{vuln}</span>
+                              <span className="text-sm">{finding.title || finding.vulnerability}</span>
                               <AlertTriangle className="h-4 w-4 text-destructive" />
                             </div>
                           ))}
