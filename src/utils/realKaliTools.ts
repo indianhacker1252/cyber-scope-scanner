@@ -927,6 +927,340 @@ export class RealKaliToolsManager {
     }
   }
 
+  // ============================================================================
+  // WebHackersWeapons Tools Integration
+  // ============================================================================
+
+  // Subfinder - Fast subdomain enumeration
+  async runSubfinderScan(domain: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `subfinder-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_SUBFINDER}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`Subfinder failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // httpx - HTTP probing toolkit
+  async runHttpxScan(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `httpx-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_HTTPX}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`httpx failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Katana - Modern web crawler
+  async runKatanaScan(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `katana-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_KATANA}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`Katana failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Dalfox - XSS scanner
+  async runDalfoxScan(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `dalfox-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_DALFOX}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`Dalfox failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // GAU - GetAllUrls
+  async runGauScan(domain: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `gau-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_GAU}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`GAU failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // FFUF - Fast web fuzzer
+  async runFfufScan(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `ffuf-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_FFUF}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`FFUF failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Arjun - Parameter discovery
+  async runArjunScan(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `arjun-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_ARJUN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`Arjun failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // ParamSpider - Parameter mining
+  async runParamspiderScan(domain: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `paramspider-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_PARAMSPIDER}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`ParamSpider failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Waybackurls - Wayback Machine URLs
+  async runWaybackurlsScan(domain: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `waybackurls-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_WAYBACKURLS}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`Waybackurls failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Hakrawler - Simple web crawler
+  async runHakrawlerScan(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `hakrawler-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_HAKRAWLER}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`Hakrawler failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Assetfinder - Asset discovery
+  async runAssetfinderScan(domain: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `assetfinder-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_ASSETFINDER}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`Assetfinder failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // LinkFinder - JS endpoint discovery
+  async runLinkfinderScan(url: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `linkfinder-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_LINKFINDER}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`LinkFinder failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // SecretFinder - JS secret scanner
+  async runSecretfinderScan(url: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `secretfinder-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_SECRETFINDER}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`SecretFinder failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // Gitleaks - Git secret scanner
+  async runGitleaksScan(repo: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `gitleaks-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_GITLEAKS}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`Gitleaks failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
+  // RustScan - Ultra-fast port scanner
+  async runRustscanScan(target: string, callback?: StreamingCallback): Promise<string> {
+    const sessionId = `rustscan-${Date.now()}`;
+    const controller = new AbortController();
+    this.activeSessions.set(sessionId, controller);
+
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_RUSTSCAN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, sessionId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) throw new Error(`RustScan failed: ${response.statusText}`);
+      return this.streamResults(sessionId, callback);
+    } catch (error: any) {
+      this.cleanup(sessionId);
+      throw error;
+    }
+  }
+
   // Run automated scan sequence (sequential to avoid system overload)
   async runAutomatedScan(config: AutomatedScanConfig): Promise<void> {
     const {

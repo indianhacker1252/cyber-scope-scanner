@@ -33,6 +33,7 @@ import { ExaInsights } from "@/components/dashboard/ExaInsights";
 import { ThreatIntelligence } from "@/components/security/ThreatIntelligence";
 import { SecurityAdvisor } from "@/components/security/SecurityAdvisor";
 import AttackVisualization from "@/components/dashboard/AttackVisualization";
+import { WebHackersWeapons } from "@/components/dashboard/WebHackersWeapons";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -73,6 +74,8 @@ const Index = () => {
         return <AutomatedVAPT />;
       case "autonomous":
         return <AutonomousHacking />;
+      case "webhackers-weapons":
+        return <WebHackersWeapons />;
       case "exa-insights":
         return <ExaInsights />;
       case "code-analysis":

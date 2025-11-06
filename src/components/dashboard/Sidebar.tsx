@@ -46,6 +46,7 @@ const sections = [
       { id: "pentestgpt", label: "PentestGPT", icon: Brain },
       { id: "automated-vapt", label: "AI Auto-VAPT", icon: Shield },
       { id: "autonomous", label: "🔥 AI Autonomous", icon: Brain },
+      { id: "webhackers-weapons", label: "⚔️ WebHackers Arsenal", icon: Shield },
       { id: "exa-insights", label: "Exa.ai Insights", icon: Lightbulb },
       { id: "code-analysis", label: "Code Analysis", icon: Code },
     { id: "database", label: "Database Testing", icon: Database },

@@ -1781,10 +1781,433 @@ app.post('/api/scan/reconng', authenticateJWT, (req, res) => {
   }
 });
 
+// ============================================================================
+// WebHackersWeapons Integration - Modern Pentesting Tools
+// ============================================================================
+
+// Subfinder - Fast subdomain enumeration
+app.post('/api/scan/subfinder', authenticateJWT, (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  if (!domain) {
+    return res.status(400).json({ error: 'Domain is required' });
+  }
+
+  try {
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const subfinderArgs = [
+      '-d', validatedDomain,
+      '-all',
+      '-recursive',
+      '-silent'
+    ];
+
+    console.log(`[${req.user.email}] Subfinder scan: ${validatedDomain}`);
+    spawnToolSession('subfinder', subfinderArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// httpx - HTTP toolkit for probing
+app.post('/api/scan/httpx', authenticateJWT, (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const httpxArgs = [
+      '-u', validatedTarget,
+      '-status-code',
+      '-title',
+      '-tech-detect',
+      '-web-server',
+      '-follow-redirects',
+      '-silent'
+    ];
+
+    console.log(`[${req.user.email}] httpx probe: ${validatedTarget}`);
+    spawnToolSession('httpx', httpxArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Katana - Modern web crawler
+app.post('/api/scan/katana', authenticateJWT, (req, res) => {
+  const { target, depth = '2', sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const katanaArgs = [
+      '-u', validatedTarget,
+      '-d', depth,
+      '-jc',
+      '-fx',
+      '-ef', 'css,png,jpg,jpeg,gif,svg,woff,woff2',
+      '-silent'
+    ];
+
+    console.log(`[${req.user.email}] Katana crawl: ${validatedTarget}`);
+    spawnToolSession('katana', katanaArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Dalfox - XSS scanner and parameter analysis
+app.post('/api/scan/dalfox', authenticateJWT, (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target URL is required' });
+  }
+
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const dalfoxArgs = [
+      'url', validatedTarget,
+      '--skip-bav',
+      '--silence',
+      '--mining-dict'
+    ];
+
+    console.log(`[${req.user.email}] Dalfox XSS scan: ${validatedTarget}`);
+    spawnToolSession('dalfox', dalfoxArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// GAU - GetAllUrls from web archives
+app.post('/api/scan/gau', authenticateJWT, (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  if (!domain) {
+    return res.status(400).json({ error: 'Domain is required' });
+  }
+
+  try {
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const gauArgs = [
+      validatedDomain,
+      '--subs',
+      '--threads', '5'
+    ];
+
+    console.log(`[${req.user.email}] GAU URL fetch: ${validatedDomain}`);
+    spawnToolSession('gau', gauArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// FFUF - Fast web fuzzer
+app.post('/api/scan/ffuf', authenticateJWT, (req, res) => {
+  const { target, wordlist = '/usr/share/seclists/Discovery/Web-Content/common.txt', sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target URL is required' });
+  }
+
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    let wordlistPath = '/usr/share/seclists/Discovery/Web-Content/common.txt';
+    
+    if (wordlist && wordlist !== wordlistPath) {
+      wordlistPath = validateFilePath(wordlist, '/usr/share');
+    }
+    
+    const ffufArgs = [
+      '-u', validatedTarget + '/FUZZ',
+      '-w', wordlistPath,
+      '-mc', 'all',
+      '-fc', '404',
+      '-sf',
+      '-s'
+    ];
+
+    console.log(`[${req.user.email}] FFUF fuzzing: ${validatedTarget}`);
+    spawnToolSession('ffuf', ffufArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Arjun - HTTP parameter discovery
+app.post('/api/scan/arjun', authenticateJWT, (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target URL is required' });
+  }
+
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const arjunArgs = [
+      '-u', validatedTarget,
+      '--stable'
+    ];
+
+    console.log(`[${req.user.email}] Arjun parameter discovery: ${validatedTarget}`);
+    spawnToolSession('arjun', arjunArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// ParamSpider - Parameter mining from web archives
+app.post('/api/scan/paramspider', authenticateJWT, (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  if (!domain) {
+    return res.status(400).json({ error: 'Domain is required' });
+  }
+
+  try {
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const paramspiderArgs = [
+      '-d', validatedDomain,
+      '--level', 'high',
+      '--quiet'
+    ];
+
+    console.log(`[${req.user.email}] ParamSpider mining: ${validatedDomain}`);
+    spawnToolSession('paramspider', paramspiderArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Waybackurls - Fetch URLs from Wayback Machine
+app.post('/api/scan/waybackurls', authenticateJWT, (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  if (!domain) {
+    return res.status(400).json({ error: 'Domain is required' });
+  }
+
+  try {
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    // waybackurls reads from stdin
+    const waybackArgs = [];
+
+    console.log(`[${req.user.email}] Waybackurls fetch: ${validatedDomain}`);
+    
+    // Special handling for waybackurls - it reads domain from stdin
+    const tool = spawn('waybackurls', waybackArgs);
+    const safeId = safeSessionId;
+    sessions.set(safeId, { tool, sessionId: safeId, startTime: Date.now() });
+    
+    tool.stdin.write(validatedDomain + '\n');
+    tool.stdin.end();
+    
+    let output = '';
+    
+    tool.stdout.on('data', (data) => {
+      const chunk = data.toString();
+      output += chunk;
+      broadcast(safeId, { type: 'output', data: chunk });
+    });
+    
+    tool.stderr.on('data', (data) => {
+      const error = data.toString();
+      broadcast(safeId, { type: 'error', data: error });
+    });
+    
+    tool.on('close', (code) => {
+      broadcast(safeId, { 
+        type: 'complete', 
+        code, 
+        output,
+        sessionId: safeId 
+      });
+      sessions.delete(safeId);
+    });
+    
+    res.json({ sessionId: safeId, message: 'Waybackurls started' });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Hakrawler - Simple web crawler
+app.post('/api/scan/hakrawler', authenticateJWT, (req, res) => {
+  const { target, depth = '2', sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target URL is required' });
+  }
+
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const hakrawlerArgs = [
+      '-url', validatedTarget,
+      '-depth', depth,
+      '-plain'
+    ];
+
+    console.log(`[${req.user.email}] Hakrawler crawl: ${validatedTarget}`);
+    spawnToolSession('hakrawler', hakrawlerArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Assetfinder - Find domains and subdomains
+app.post('/api/scan/assetfinder', authenticateJWT, (req, res) => {
+  const { domain, sessionId } = req.body;
+  
+  if (!domain) {
+    return res.status(400).json({ error: 'Domain is required' });
+  }
+
+  try {
+    const validatedDomain = validateTarget(domain);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const assetfinderArgs = [
+      '--subs-only',
+      validatedDomain
+    ];
+
+    console.log(`[${req.user.email}] Assetfinder scan: ${validatedDomain}`);
+    spawnToolSession('assetfinder', assetfinderArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// LinkFinder - Discover endpoints in JavaScript files
+app.post('/api/scan/linkfinder', authenticateJWT, (req, res) => {
+  const { url, sessionId } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  try {
+    const validatedUrl = validateTarget(url);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const linkfinderArgs = [
+      '-i', validatedUrl,
+      '-o', 'cli'
+    ];
+
+    console.log(`[${req.user.email}] LinkFinder scan: ${validatedUrl}`);
+    spawnToolSession('linkfinder', linkfinderArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// SecretFinder - Find sensitive data in JS files
+app.post('/api/scan/secretfinder', authenticateJWT, (req, res) => {
+  const { url, sessionId } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  try {
+    const validatedUrl = validateTarget(url);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const secretfinderArgs = [
+      '-i', validatedUrl,
+      '-o', 'cli'
+    ];
+
+    console.log(`[${req.user.email}] SecretFinder scan: ${validatedUrl}`);
+    spawnToolSession('python3', ['/usr/share/secretfinder/SecretFinder.py', ...secretfinderArgs], safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Gitleaks - Scan for secrets in git repos
+app.post('/api/scan/gitleaks', authenticateJWT, (req, res) => {
+  const { repo, sessionId } = req.body;
+  
+  if (!repo) {
+    return res.status(400).json({ error: 'Repository URL is required' });
+  }
+
+  try {
+    const validatedRepo = validateTarget(repo);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const gitleaksArgs = [
+      'detect',
+      '--source', validatedRepo,
+      '--verbose',
+      '--no-git'
+    ];
+
+    console.log(`[${req.user.email}] Gitleaks scan: ${validatedRepo}`);
+    spawnToolSession('gitleaks', gitleaksArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// RustScan - Ultra-fast port scanner
+app.post('/api/scan/rustscan', authenticateJWT, (req, res) => {
+  const { target, sessionId } = req.body;
+  
+  if (!target) {
+    return res.status(400).json({ error: 'Target is required' });
+  }
+
+  try {
+    const validatedTarget = validateTarget(target);
+    const safeSessionId = sanitizeSessionId(sessionId);
+    
+    const rustscanArgs = [
+      '-a', validatedTarget,
+      '--ulimit', '5000',
+      '--batch-size', '15000'
+    ];
+
+    console.log(`[${req.user.email}] RustScan: ${validatedTarget}`);
+    spawnToolSession('rustscan', rustscanArgs, safeSessionId, res);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Start server
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`🔥 VAPT Backend Server running on port ${PORT}`);
   console.log(`📡 WebSocket server ready for real-time scanning`);
   console.log(`🐉 Kali Linux Tool Integration Active`);
+  console.log(`⚔️  WebHackersWeapons Tools Integrated`);
 });

@@ -44,6 +44,22 @@ export const API_CONFIG = {
     SCAN_METASPLOIT: '/api/scan/metasploit',
     SCAN_JOHN: '/api/scan/john',
     SCAN_HASHCAT: '/api/scan/hashcat',
-    SCAN_RECONNG: '/api/scan/reconng'
+    SCAN_RECONNG: '/api/scan/reconng',
+    // WebHackersWeapons Tools
+    SCAN_SUBFINDER: '/api/scan/subfinder',
+    SCAN_HTTPX: '/api/scan/httpx',
+    SCAN_KATANA: '/api/scan/katana',
+    SCAN_DALFOX: '/api/scan/dalfox',
+    SCAN_GAU: '/api/scan/gau',
+    SCAN_FFUF: '/api/scan/ffuf',
+    SCAN_ARJUN: '/api/scan/arjun',
+    SCAN_PARAMSPIDER: '/api/scan/paramspider',
+    SCAN_WAYBACKURLS: '/api/scan/waybackurls',
+    SCAN_HAKRAWLER: '/api/scan/hakrawler',
+    SCAN_ASSETFINDER: '/api/scan/assetfinder',
+    SCAN_LINKFINDER: '/api/scan/linkfinder',
+    SCAN_SECRETFINDER: '/api/scan/secretfinder',
+    SCAN_GITLEAKS: '/api/scan/gitleaks',
+    SCAN_RUSTSCAN: '/api/scan/rustscan'
   }
 };
