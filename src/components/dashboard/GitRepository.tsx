@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   GitBranch, 
   Github,
@@ -18,59 +19,57 @@ import {
   Eye,
   Bug,
   Lock,
-  Key
+  Key,
+  Loader2,
+  Trash2
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { RealKaliToolsManager } from "@/utils/realKaliTools";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Repository {
+  id: string;
+  name: string;
+  url: string;
+  description: string;
+  language: string;
+  lastScan: string;
+  vulnerabilities: number;
+  severity: string;
+  scanOutput?: string;
+  findings?: any[];
+}
 
 const GitRepository = () => {
   const { toast } = useToast();
+  const toolsManager = RealKaliToolsManager.getInstance();
   const [repoUrl, setRepoUrl] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [scanProgress, setScanProgress] = useState(0);
   const [isScanning, setIsScanning] = useState(false);
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [scanOutput, setScanOutput] = useState("");
+  const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
 
-  const [repositories] = useState([
-    {
-      id: 1,
-      name: "vulnerable-web-app",
-      url: "https://github.com/OWASP/WebGoat.git",
-      description: "OWASP WebGoat - A deliberately insecure application",
-      language: "Java",
-      lastScan: "2024-01-15",
-      vulnerabilities: 23,
-      severity: "high"
-    },
-    {
-      id: 2,
-      name: "damn-vulnerable-node",
-      url: "https://github.com/appsecco/dvna.git", 
-      description: "Damn Vulnerable Node Application",
-      language: "JavaScript",
-      lastScan: "2024-01-10",
-      vulnerabilities: 18,
-      severity: "critical"
-    },
-    {
-      id: 3,
-      name: "python-security-test",
-      url: "https://github.com/we45/DVPython.git",
-      description: "Damn Vulnerable Python Web Application",
-      language: "Python",
-      lastScan: "2024-01-08",
-      vulnerabilities: 15,
-      severity: "medium"
+  // Load repositories from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('git_repositories');
+    if (stored) {
+      try {
+        setRepositories(JSON.parse(stored));
+      } catch (e) {
+        setRepositories([]);
+      }
     }
-  ]);
+  }, []);
 
-  const vulnerabilityTypes = [
-    { type: "SQL Injection", count: 8, severity: "critical" },
-    { type: "XSS", count: 12, severity: "high" },
-    { type: "CSRF", count: 5, severity: "medium" },
-    { type: "Hardcoded Secrets", count: 7, severity: "high" },
-    { type: "Weak Cryptography", count: 4, severity: "medium" },
-    { type: "Path Traversal", count: 3, severity: "high" }
-  ];
+  // Save repositories to localStorage
+  useEffect(() => {
+    if (repositories.length > 0) {
+      localStorage.setItem('git_repositories', JSON.stringify(repositories));
+    }
+  }, [repositories]);
 
   const cloneRepository = async () => {
     if (!repoUrl) {
@@ -84,37 +83,129 @@ const GitRepository = () => {
 
     setIsScanning(true);
     setScanProgress(0);
+    setScanOutput("");
 
     toast({
       title: "Repository Clone Started",
-      description: `Cloning repository: ${repoUrl}`,
+      description: `Cloning and scanning: ${repoUrl}`,
     });
 
-    // Simulate cloning and scanning process
-    const interval = setInterval(() => {
-      setScanProgress(prev => {
-        const newProgress = Math.min(prev + Math.random() * 15, 100);
-        if (newProgress >= 100) {
-          clearInterval(interval);
-          setIsScanning(false);
-          toast({
-            title: "Repository Scan Complete",
-            description: "Security analysis completed successfully",
-          });
+    try {
+      // Extract repo name from URL
+      const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'unknown';
+      
+      setScanProgress(10);
+      setScanOutput(prev => prev + `[INFO] Cloning repository: ${repoUrl}\n`);
+
+      // Run gitleaks for secret detection
+      setScanProgress(30);
+      setScanOutput(prev => prev + `[INFO] Running Gitleaks secret detection...\n`);
+      
+      const gitleaksResult = await toolsManager.runGitleaks(repoUrl, {
+        onOutput: (data) => {
+          setScanOutput(prev => prev + data);
+        },
+        onProgress: (progress) => {
+          setScanProgress(30 + progress * 0.4);
         }
-        return newProgress;
       });
-    }, 500);
+
+      setScanProgress(70);
+      setScanOutput(prev => prev + `[INFO] Running static code analysis...\n`);
+
+      // Parse findings
+      const findings = gitleaksResult?.findings || [];
+      const vulnCount = findings.length;
+      const severity = vulnCount > 10 ? 'critical' : vulnCount > 5 ? 'high' : vulnCount > 0 ? 'medium' : 'low';
+
+      setScanProgress(100);
+
+      // Add to repositories list
+      const newRepo: Repository = {
+        id: `repo_${Date.now()}`,
+        name: repoName,
+        url: repoUrl,
+        description: `Scanned repository`,
+        language: 'Unknown',
+        lastScan: new Date().toISOString().split('T')[0],
+        vulnerabilities: vulnCount,
+        severity,
+        scanOutput: gitleaksResult?.output || '',
+        findings
+      };
+
+      setRepositories(prev => [newRepo, ...prev]);
+      setRepoUrl("");
+
+      toast({
+        title: "Repository Scan Complete",
+        description: `Found ${vulnCount} potential security issues`,
+      });
+
+    } catch (error: any) {
+      setScanOutput(prev => prev + `[ERROR] ${error.message}\n`);
+      toast({
+        title: "Scan Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsScanning(false);
+    }
   };
 
-  const scanRepository = (repoId: number) => {
-    const repo = repositories.find(r => r.id === repoId);
-    if (repo) {
+  const scanRepository = async (repo: Repository) => {
+    setSelectedRepo(repo);
+    setIsScanning(true);
+    setScanOutput("");
+
+    try {
       toast({
-        title: "Repository Scan Started",
+        title: "Rescanning Repository",
         description: `Starting security scan for ${repo.name}`,
       });
+
+      const result = await toolsManager.runGitleaks(repo.url, {
+        onOutput: (data) => {
+          setScanOutput(prev => prev + data);
+        }
+      });
+
+      const findings = result?.findings || [];
+      const updatedRepo = {
+        ...repo,
+        lastScan: new Date().toISOString().split('T')[0],
+        vulnerabilities: findings.length,
+        severity: findings.length > 10 ? 'critical' : findings.length > 5 ? 'high' : findings.length > 0 ? 'medium' : 'low',
+        scanOutput: result?.output || '',
+        findings
+      };
+
+      setRepositories(prev => prev.map(r => r.id === repo.id ? updatedRepo : r));
+      setSelectedRepo(updatedRepo);
+
+      toast({
+        title: "Rescan Complete",
+        description: `Found ${findings.length} potential issues`,
+      });
+
+    } catch (error: any) {
+      toast({
+        title: "Rescan Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsScanning(false);
     }
+  };
+
+  const removeRepository = (repoId: string) => {
+    setRepositories(prev => prev.filter(r => r.id !== repoId));
+    toast({
+      title: "Repository Removed",
+      description: "Repository has been removed from the list"
+    });
   };
 
   const getSeverityColor = (severity: string) => {
@@ -276,13 +367,20 @@ const GitRepository = () => {
                           Last scan: {repo.lastScan}
                         </span>
                         <div className="space-x-2">
-                          <Button size="sm" variant="outline">
+                          <Button size="sm" variant="outline" onClick={() => setSelectedRepo(repo)}>
                             <Eye className="h-4 w-4 mr-1" />
                             View Results
                           </Button>
-                          <Button size="sm" onClick={() => scanRepository(repo.id)}>
-                            <Play className="h-4 w-4 mr-1" />
+                          <Button size="sm" onClick={() => scanRepository(repo)} disabled={isScanning}>
+                            {isScanning && selectedRepo?.id === repo.id ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <Play className="h-4 w-4 mr-1" />
+                            )}
                             Rescan
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => removeRepository(repo.id)}>
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
@@ -293,26 +391,47 @@ const GitRepository = () => {
             </TabsContent>
 
             <TabsContent value="vulnerabilities" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {vulnerabilityTypes.map((vuln, index) => (
-                  <Card key={index}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <Bug className="h-5 w-5 text-primary" />
-                          <div>
-                            <p className="font-medium">{vuln.type}</p>
-                            <p className="text-sm text-muted-foreground">{vuln.count} instances found</p>
+              {repositories.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <Bug className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-lg font-medium mb-2">No Vulnerabilities</p>
+                    <p className="text-muted-foreground">Clone and scan repositories to find vulnerabilities</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {repositories.flatMap(repo => 
+                    (repo.findings || []).map((finding: any, idx: number) => (
+                      <Card key={`${repo.id}-${idx}`}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <Bug className="h-5 w-5 text-primary" />
+                              <div>
+                                <p className="font-medium">{finding.type || finding.rule || 'Secret Found'}</p>
+                                <p className="text-sm text-muted-foreground">{repo.name}</p>
+                              </div>
+                            </div>
+                            <Badge className={getSeverityColor(finding.severity || 'high')}>
+                              {finding.severity || 'high'}
+                            </Badge>
                           </div>
-                        </div>
-                        <Badge className={getSeverityColor(vuln.severity)}>
-                          {vuln.severity}
-                        </Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                  {repositories.every(r => !r.findings?.length) && (
+                    <Card className="col-span-2">
+                      <CardContent className="p-8 text-center">
+                        <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500" />
+                        <p className="text-lg font-medium mb-2">No Secrets Found</p>
+                        <p className="text-muted-foreground">All scanned repositories appear clean</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="reports" className="space-y-4">
