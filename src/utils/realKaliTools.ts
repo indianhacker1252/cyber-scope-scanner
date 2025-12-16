@@ -1352,4 +1352,59 @@ export class RealKaliToolsManager {
       }
     }
   }
+
+  // Run Gitleaks for secret detection in repositories
+  async runGitleaks(
+    repoUrl: string,
+    callback?: StreamingCallback
+  ): Promise<{ output: string; findings: any[] }> {
+    const sessionId = `gitleaks-${Date.now()}`;
+    let output = '';
+    const findings: any[] = [];
+
+    try {
+      console.log(`[Gitleaks] Starting scan: ${repoUrl} - Session: ${sessionId}`);
+      
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/gitleaks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl, sessionId })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => response.statusText);
+        throw new Error(`Gitleaks scan failed: ${errorText}`);
+      }
+
+      const result = await response.json();
+      output = result.output || '';
+      
+      // Parse findings from output
+      if (result.findings) {
+        findings.push(...result.findings);
+      }
+
+      callback?.onOutput?.(output);
+      callback?.onProgress?.(100);
+      callback?.onComplete?.({
+        id: sessionId,
+        tool: 'gitleaks',
+        target: repoUrl,
+        status: 'completed',
+        progress: 100,
+        findings,
+        output,
+        startTime: new Date()
+      });
+
+      return { output, findings };
+
+    } catch (error: any) {
+      console.error('[Gitleaks] Error:', error);
+      const errorMsg = `Gitleaks error: ${error.message}`;
+      callback?.onError?.(errorMsg);
+      callback?.onOutput?.(errorMsg);
+      return { output: errorMsg, findings: [] };
+    }
+  }
 }

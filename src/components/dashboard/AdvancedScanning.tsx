@@ -39,35 +39,31 @@ const AdvancedScanning = () => {
   const { toast } = useToast();
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  // Simulate real-time verbose logs
+  // Real-time output from active sessions (no simulation)
   useEffect(() => {
-    if (!verboseMode) return;
-
-    const interval = setInterval(() => {
-      const runningSessions = activeSessions.filter(s => s.status === 'running');
+    const runningSessions = activeSessions.filter(s => s.status === 'running');
+    
+    runningSessions.forEach(session => {
+      if (skippedScans.has(session.id)) return;
       
-      runningSessions.forEach(session => {
-        if (skippedScans.has(session.id)) return;
-        
+      // Use real output from session
+      if (session.output) {
         setScanLogs(prev => {
-          const currentLogs = prev[session.id] || [];
-          const newLogs = generateVerboseLogs(session.tool, session.target, currentLogs.length);
+          const lines = session.output.split('\n').filter(line => line.trim());
           return {
             ...prev,
-            [session.id]: [...currentLogs, ...newLogs]
+            [session.id]: lines.slice(-100) // Keep last 100 lines
           };
         });
+      }
 
-        // Update progress
-        setScanProgress(prev => ({
-          ...prev,
-          [session.id]: Math.min((prev[session.id] || 0) + Math.random() * 5, 95)
-        }));
-      });
-    }, refreshInterval);
-
-    return () => clearInterval(interval);
-  }, [verboseMode, activeSessions, refreshInterval, skippedScans]);
+      // Use real progress from session
+      setScanProgress(prev => ({
+        ...prev,
+        [session.id]: session.progress || 0
+      }));
+    });
+  }, [activeSessions, skippedScans]);
 
   // Auto-scroll to bottom of logs
   useEffect(() => {
@@ -75,82 +71,6 @@ const AdvancedScanning = () => {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [scanLogs, autoScroll]);
-
-  const generateVerboseLogs = (tool: string, target: string, logCount: number): string[] => {
-    const logs: string[] = [];
-    const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
-    
-    switch (tool) {
-      case 'nmap':
-        const nmapLogs = [
-          `[${timestamp}] Starting Nmap scan on ${target}`,
-          `[${timestamp}] Initiating SYN Stealth Scan`,
-          `[${timestamp}] Scanning port 80/tcp`,
-          `[${timestamp}] Scanning port 443/tcp`,
-          `[${timestamp}] Scanning port 22/tcp`,
-          `[${timestamp}] Discovered open port 80/tcp on ${target}`,
-          `[${timestamp}] Discovered open port 443/tcp on ${target}`,
-          `[${timestamp}] Performing service detection...`,
-          `[${timestamp}] Service scan on 80/tcp: Apache httpd 2.4.51`,
-          `[${timestamp}] Service scan on 443/tcp: Apache httpd 2.4.51 (SSL)`,
-        ];
-        logs.push(nmapLogs[logCount % nmapLogs.length]);
-        break;
-        
-      case 'nikto':
-        const niktoLogs = [
-          `[${timestamp}] Starting Nikto web vulnerability scan`,
-          `[${timestamp}] Testing ${target}`,
-          `[${timestamp}] Server: Apache/2.4.51`,
-          `[${timestamp}] Checking for outdated server version`,
-          `[${timestamp}] Testing for common files and directories`,
-          `[${timestamp}] Found: /admin/ (Status: 200)`,
-          `[${timestamp}] Found: /config/ (Status: 403)`,
-          `[${timestamp}] Testing for XSS vulnerabilities`,
-          `[${timestamp}] Testing for SQL injection points`,
-          `[${timestamp}] Checking security headers`,
-        ];
-        logs.push(niktoLogs[logCount % niktoLogs.length]);
-        break;
-        
-      case 'sqlmap':
-        const sqlmapLogs = [
-          `[${timestamp}] Starting SQL injection assessment`,
-          `[${timestamp}] Testing connection to target URL`,
-          `[${timestamp}] Testing parameter 'id' for SQL injection`,
-          `[${timestamp}] Testing GET parameter 'id'`,
-          `[${timestamp}] Testing for boolean-based blind SQL injection`,
-          `[${timestamp}] Testing for time-based blind SQL injection`,
-          `[${timestamp}] Testing for error-based SQL injection`,
-          `[${timestamp}] Vulnerability found! Parameter 'id' is injectable`,
-          `[${timestamp}] Backend DBMS: MySQL >= 5.0.0`,
-          `[${timestamp}] Enumerating database tables...`,
-        ];
-        logs.push(sqlmapLogs[logCount % sqlmapLogs.length]);
-        break;
-        
-      case 'gobuster':
-        const gobusterLogs = [
-          `[${timestamp}] Starting directory enumeration`,
-          `[${timestamp}] Using wordlist: /usr/share/wordlists/dirb/common.txt`,
-          `[${timestamp}] Testing: /admin`,
-          `[${timestamp}] Testing: /backup`,
-          `[${timestamp}] Found: /admin/ (Status: 200)`,
-          `[${timestamp}] Testing: /config`,
-          `[${timestamp}] Found: /uploads/ (Status: 301)`,
-          `[${timestamp}] Testing: /images`,
-          `[${timestamp}] Found: /assets/ (Status: 200)`,
-          `[${timestamp}] Testing: /api`,
-        ];
-        logs.push(gobusterLogs[logCount % gobusterLogs.length]);
-        break;
-        
-      default:
-        logs.push(`[${timestamp}] Running ${tool} on ${target}...`);
-    }
-    
-    return logs;
-  };
 
   const skipScan = (scanId: string) => {
     setSkippedScans(prev => new Set(prev).add(scanId));
