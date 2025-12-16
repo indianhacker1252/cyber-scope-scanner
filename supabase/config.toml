@@ -27,3 +27,6 @@ verify_jwt = true
 [functions.autonomous-attack-executor]
 verify_jwt = true
 
+[functions.ai-tool-orchestrator]
+verify_jwt = true
+
