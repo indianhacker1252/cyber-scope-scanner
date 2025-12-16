@@ -14,6 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_decisions: {
+        Row: {
+          analysis: Json | null
+          created_at: string
+          execution_results: Json | null
+          feedback: string | null
+          id: string
+          target: string | null
+          tools_selected: string[] | null
+          user_id: string
+          user_input: string
+        }
+        Insert: {
+          analysis?: Json | null
+          created_at?: string
+          execution_results?: Json | null
+          feedback?: string | null
+          id?: string
+          target?: string | null
+          tools_selected?: string[] | null
+          user_id: string
+          user_input: string
+        }
+        Update: {
+          analysis?: Json | null
+          created_at?: string
+          execution_results?: Json | null
+          feedback?: string | null
+          id?: string
+          target?: string | null
+          tools_selected?: string[] | null
+          user_id?: string
+          user_input?: string
+        }
+        Relationships: []
+      }
+      ai_learnings: {
+        Row: {
+          ai_analysis: string | null
+          created_at: string
+          execution_time: number | null
+          findings: Json | null
+          id: string
+          improvement_strategy: string | null
+          success: boolean | null
+          success_rate: number | null
+          target: string | null
+          tool_used: string
+          user_id: string
+        }
+        Insert: {
+          ai_analysis?: string | null
+          created_at?: string
+          execution_time?: number | null
+          findings?: Json | null
+          id?: string
+          improvement_strategy?: string | null
+          success?: boolean | null
+          success_rate?: number | null
+          target?: string | null
+          tool_used: string
+          user_id: string
+        }
+        Update: {
+          ai_analysis?: string | null
+          created_at?: string
+          execution_time?: number | null
+          findings?: Json | null
+          id?: string
+          improvement_strategy?: string | null
+          success?: boolean | null
+          success_rate?: number | null
+          target?: string | null
+          tool_used?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       attack_attempts: {
         Row: {
           attack_type: string
