@@ -7,6 +7,110 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// MITRE ATT&CK Framework Mapping
+const MITRE_ATTACK = {
+  reconnaissance: {
+    tactic: 'TA0043',
+    techniques: {
+      'active_scanning': 'T1595',
+      'gather_victim_info': 'T1592',
+      'search_victim_infra': 'T1590',
+      'phishing_for_info': 'T1598'
+    }
+  },
+  resource_development: {
+    tactic: 'TA0042',
+    techniques: {
+      'acquire_infrastructure': 'T1583',
+      'develop_capabilities': 'T1587',
+      'obtain_capabilities': 'T1588'
+    }
+  },
+  initial_access: {
+    tactic: 'TA0001',
+    techniques: {
+      'exploit_public_facing': 'T1190',
+      'phishing': 'T1566',
+      'supply_chain': 'T1195',
+      'valid_accounts': 'T1078'
+    }
+  },
+  execution: {
+    tactic: 'TA0002',
+    techniques: {
+      'command_scripting': 'T1059',
+      'exploitation_for_execution': 'T1203',
+      'user_execution': 'T1204'
+    }
+  },
+  persistence: {
+    tactic: 'TA0003',
+    techniques: {
+      'create_account': 'T1136',
+      'scheduled_task': 'T1053',
+      'web_shell': 'T1505.003'
+    }
+  },
+  privilege_escalation: {
+    tactic: 'TA0004',
+    techniques: {
+      'exploitation_for_priv_esc': 'T1068',
+      'access_token_manipulation': 'T1134',
+      'sudo_caching': 'T1548.003'
+    }
+  },
+  credential_access: {
+    tactic: 'TA0006',
+    techniques: {
+      'brute_force': 'T1110',
+      'credential_dumping': 'T1003',
+      'input_capture': 'T1056'
+    }
+  },
+  lateral_movement: {
+    tactic: 'TA0008',
+    techniques: {
+      'remote_services': 'T1021',
+      'exploitation_of_remote': 'T1210',
+      'internal_spearphishing': 'T1534'
+    }
+  },
+  exfiltration: {
+    tactic: 'TA0010',
+    techniques: {
+      'exfil_over_c2': 'T1041',
+      'exfil_over_web': 'T1567',
+      'automated_exfil': 'T1020'
+    }
+  }
+};
+
+// PTES (Penetration Testing Execution Standard) Phases
+const PTES_PHASES = [
+  'pre_engagement',
+  'intelligence_gathering', 
+  'threat_modeling',
+  'vulnerability_analysis',
+  'exploitation',
+  'post_exploitation',
+  'reporting'
+];
+
+// OWASP Testing Guide v5 Categories
+const OWASP_TESTS = {
+  info_gathering: ['WSTG-INFO-01', 'WSTG-INFO-02', 'WSTG-INFO-03'],
+  config_testing: ['WSTG-CONF-01', 'WSTG-CONF-02', 'WSTG-CONF-03'],
+  identity_management: ['WSTG-IDNT-01', 'WSTG-IDNT-02'],
+  authentication: ['WSTG-ATHN-01', 'WSTG-ATHN-02', 'WSTG-ATHN-03'],
+  authorization: ['WSTG-ATHZ-01', 'WSTG-ATHZ-02'],
+  session_management: ['WSTG-SESS-01', 'WSTG-SESS-02'],
+  input_validation: ['WSTG-INPV-01', 'WSTG-INPV-02', 'WSTG-INPV-03'],
+  error_handling: ['WSTG-ERRH-01', 'WSTG-ERRH-02'],
+  cryptography: ['WSTG-CRYP-01', 'WSTG-CRYP-02'],
+  business_logic: ['WSTG-BUSL-01', 'WSTG-BUSL-02'],
+  client_side: ['WSTG-CLNT-01', 'WSTG-CLNT-02']
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -16,11 +120,7 @@ serve(async (req) => {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
 
     const { data: { user } } = await supabaseClient.auth.getUser();
@@ -42,34 +142,69 @@ serve(async (req) => {
 
     switch (action) {
       case 'analyze-target': {
-        // Deep target analysis with AI
         const { target, reconnaissance_data } = requestData;
-        
-        const prompt = `You are an elite offensive security AI. Analyze this target and reconnaissance data:
+
+        // Fetch previous learnings for this target type
+        const { data: previousLearnings } = await supabaseClient
+          .from('ai_learnings')
+          .select('*')
+          .order('success_rate', { ascending: false })
+          .limit(10);
+
+        const prompt = `You are an elite offensive security AI following PTES methodology and MITRE ATT&CK framework.
 
 TARGET: ${target}
 
 RECONNAISSANCE DATA:
 ${JSON.stringify(reconnaissance_data, null, 2)}
 
-Provide a comprehensive analysis in JSON format:
+PREVIOUS LEARNINGS (use to improve strategy):
+${JSON.stringify(previousLearnings || [], null, 2)}
+
+MITRE ATT&CK FRAMEWORK REFERENCE:
+${JSON.stringify(MITRE_ATTACK, null, 2)}
+
+OWASP TESTING GUIDE v5 CATEGORIES:
+${JSON.stringify(OWASP_TESTS, null, 2)}
+
+Provide a comprehensive analysis following PTES phases. Return JSON:
 {
+  "ptes_phase": "current phase recommendation",
   "tech_stack": ["detected technologies with versions"],
-  "vulnerabilities": ["potential vulnerabilities with CVEs if applicable"],
+  "vulnerabilities": [
+    {
+      "name": "vulnerability name",
+      "cve": "CVE-XXXX-XXXX if known",
+      "severity": "critical/high/medium/low",
+      "owasp_category": "relevant OWASP test ID",
+      "mitre_technique": "relevant T-code"
+    }
+  ],
   "attack_surface": ["exposed services, ports, endpoints"],
-  "weak_points": ["prioritized weak points to exploit"],
+  "weak_points": ["prioritized weak points"],
+  "kill_chain": [
+    {
+      "phase": "reconnaissance/weaponization/delivery/exploitation/installation/c2/actions",
+      "action": "specific action",
+      "mitre_tactic": "TA code",
+      "mitre_technique": "T code"
+    }
+  ],
   "recommended_attack_chain": [
     {
       "step": 1,
       "technique": "technique name",
       "tool": "tool to use",
       "command": "exact command",
-      "reason": "why this step",
-      "success_indicators": ["what indicates success"]
+      "mitre_mapping": "T-code",
+      "owasp_test": "WSTG-XXX-XX",
+      "success_indicators": ["what indicates success"],
+      "evasion_tips": ["how to avoid detection"]
     }
   ],
   "ai_confidence": "high/medium/low",
-  "estimated_difficulty": "trivial/easy/medium/hard/expert"
+  "estimated_difficulty": "trivial/easy/medium/hard/expert",
+  "defensive_gaps": ["detected security weaknesses in defenses"]
 }`;
 
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -81,12 +216,18 @@ Provide a comprehensive analysis in JSON format:
           body: JSON.stringify({
             model: 'google/gemini-2.5-flash',
             messages: [{ role: 'user', content: prompt }],
-            response_format: { type: "json_object" }
           }),
         });
 
         const aiData = await aiResponse.json();
-        const analysis = JSON.parse(aiData.choices[0].message.content);
+        let analysis;
+        try {
+          const content = aiData.choices[0].message.content;
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: content };
+        } catch {
+          analysis = { raw: aiData.choices[0].message.content };
+        }
 
         // Store target intelligence
         await supabaseClient.from('target_intelligence').upsert({
@@ -206,10 +347,17 @@ Generate an advanced, adaptive payload that learns from failures. Return JSON:
       }
 
       case 'create-attack-chain': {
-        // Create intelligent multi-stage attack chain
         const { target, objective, intelligence } = requestData;
 
-        const prompt = `You are an advanced penetration testing AI. Create a sophisticated attack chain:
+        // Fetch learnings to improve attack strategy
+        const { data: successfulAttacks } = await supabaseClient
+          .from('attack_attempts')
+          .select('*')
+          .eq('success', true)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        const prompt = `You are an advanced penetration testing AI following PTES and MITRE ATT&CK framework.
 
 TARGET: ${target}
 OBJECTIVE: ${objective}
@@ -217,26 +365,43 @@ OBJECTIVE: ${objective}
 INTELLIGENCE:
 ${JSON.stringify(intelligence, null, 2)}
 
-Create a multi-stage attack chain that automatically adapts. Return JSON:
+PREVIOUS SUCCESSFUL ATTACKS (learn from these):
+${JSON.stringify(successfulAttacks || [], null, 2)}
+
+MITRE ATT&CK FRAMEWORK:
+${JSON.stringify(MITRE_ATTACK, null, 2)}
+
+PTES PHASES: ${PTES_PHASES.join(' -> ')}
+
+Create a multi-stage attack chain with MITRE mapping. Return JSON:
 {
   "chain_name": "descriptive name",
+  "methodology": "PTES/OWASP/custom",
   "attack_sequence": [
     {
       "stage": 1,
+      "ptes_phase": "relevant PTES phase",
       "name": "stage name",
       "technique": "technique",
       "tool": "tool name",
       "command": "exact command with parameters",
+      "mitre_tactic": "TA code",
+      "mitre_technique": "T code",
       "expected_output": "what to expect",
       "success_criteria": "how to verify success",
       "on_success": "next stage number or 'complete'",
-      "on_failure": "alternative stage number or adaptation needed",
-      "timeout": "max execution time in seconds"
+      "on_failure": "adaptation: describe how AI should adapt",
+      "timeout": "max execution time in seconds",
+      "stealth_level": "loud/moderate/quiet/silent",
+      "evasion_techniques": ["techniques to avoid detection"]
     }
   ],
-  "total_stages": "number",
+  "total_stages": number,
   "estimated_time": "estimated time to complete",
-  "risk_level": "low/medium/high/critical"
+  "risk_level": "low/medium/high/critical",
+  "detection_probability": "low/medium/high",
+  "kill_chain_coverage": ["phases covered"],
+  "fallback_strategies": ["if main chain fails"]
 }`;
 
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -248,23 +413,34 @@ Create a multi-stage attack chain that automatically adapts. Return JSON:
           body: JSON.stringify({
             model: 'google/gemini-2.5-flash',
             messages: [{ role: 'user', content: prompt }],
-            response_format: { type: "json_object" }
           }),
         });
 
         const aiData = await aiResponse.json();
-        const chain = JSON.parse(aiData.choices[0].message.content);
+        let chain;
+        try {
+          const content = aiData.choices[0].message.content;
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          chain = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: content };
+        } catch {
+          chain = { raw: aiData.choices[0].message.content };
+        }
 
-        // Store attack chain
         const { data: chainData } = await supabaseClient.from('attack_chains').insert({
           user_id: user.id,
           target,
-          chain_name: chain.chain_name,
-          attack_sequence: chain.attack_sequence,
+          chain_name: chain.chain_name || `Attack on ${target}`,
+          attack_sequence: chain.attack_sequence || chain,
           status: 'ready'
         }).select().single();
 
-        return new Response(JSON.stringify({ success: true, chain, chain_id: chainData.id }), {
+        return new Response(JSON.stringify({ 
+          success: true, 
+          chain, 
+          chain_id: chainData?.id,
+          mitre_framework: MITRE_ATTACK,
+          ptes_phases: PTES_PHASES
+        }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
