@@ -19,7 +19,8 @@ import {
   Download,
   GitBranch,
   Lightbulb,
-  Zap
+  Zap,
+  Cloud
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ const sections = [
     { id: "reconnaissance", label: "Reconnaissance", icon: Search },
     { id: "web-vulns", label: "Web Vulnerabilities", icon: Globe },
     { id: "api-security", label: "🔌 API Security", icon: Zap },
+    { id: "cloud-security", label: "☁️ Cloud Security", icon: Cloud },
     { id: "network", label: "Network Scanning", icon: Network },
     { id: "mobile", label: "Mobile Security", icon: Smartphone },
     { id: "iot-security", label: "IoT Security", icon: Wifi },
