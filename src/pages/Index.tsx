@@ -35,6 +35,7 @@ import { SecurityAdvisor } from "@/components/security/SecurityAdvisor";
 import AttackVisualization from "@/components/dashboard/AttackVisualization";
 import { WebHackersWeapons } from "@/components/dashboard/WebHackersWeapons";
 import AIAssistant from "@/components/dashboard/AIAssistant";
+import APISecurityTesting from "@/components/dashboard/APISecurityTesting";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -61,6 +62,8 @@ const Index = () => {
         return <EnhancedScanResults />;
       case "web-vulns":
         return <WebVulnerabilities onNavigateToResults={navigateToResults} />;
+      case "api-security":
+        return <APISecurityTesting />;
       case "reconnaissance":
         return <Reconnaissance onNavigateToResults={navigateToResults} />;
       case "network":

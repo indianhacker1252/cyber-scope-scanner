@@ -18,7 +18,8 @@ import {
   EyeOff,
   Download,
   GitBranch,
-  Lightbulb
+  Lightbulb,
+  Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -40,16 +41,17 @@ const sections = [
     { id: "scan-results", label: "Scan Results", icon: FileText },
     { id: "reconnaissance", label: "Reconnaissance", icon: Search },
     { id: "web-vulns", label: "Web Vulnerabilities", icon: Globe },
+    { id: "api-security", label: "🔌 API Security", icon: Zap },
     { id: "network", label: "Network Scanning", icon: Network },
     { id: "mobile", label: "Mobile Security", icon: Smartphone },
     { id: "iot-security", label: "IoT Security", icon: Wifi },
-      { id: "pentestgpt", label: "PentestGPT", icon: Brain },
-      { id: "automated-vapt", label: "AI Auto-VAPT", icon: Shield },
-      { id: "autonomous", label: "🔥 AI Autonomous", icon: Brain },
-      { id: "ai-assistant", label: "🧠 AI Assistant", icon: Brain },
-      { id: "webhackers-weapons", label: "⚔️ WebHackers Arsenal", icon: Shield },
-      { id: "exa-insights", label: "Exa.ai Insights", icon: Lightbulb },
-      { id: "code-analysis", label: "Code Analysis", icon: Code },
+    { id: "pentestgpt", label: "PentestGPT", icon: Brain },
+    { id: "automated-vapt", label: "AI Auto-VAPT", icon: Shield },
+    { id: "autonomous", label: "🔥 AI Autonomous", icon: Brain },
+    { id: "ai-assistant", label: "🧠 AI Assistant", icon: Brain },
+    { id: "webhackers-weapons", label: "⚔️ WebHackers Arsenal", icon: Shield },
+    { id: "exa-insights", label: "Exa.ai Insights", icon: Lightbulb },
+    { id: "code-analysis", label: "Code Analysis", icon: Code },
     { id: "database", label: "Database Testing", icon: Database },
     { id: "exploits", label: "Exploit Testing", icon: Bug },
     { id: "asset-exclusion", label: "Asset Exclusion", icon: EyeOff },
