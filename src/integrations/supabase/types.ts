@@ -92,6 +92,48 @@ export type Database = {
         }
         Relationships: []
       }
+      apex_successful_chains: {
+        Row: {
+          attack_chain: Json
+          created_at: string
+          embedding_data: Json | null
+          id: string
+          service_signature: string | null
+          success_rate: number | null
+          target_type: string
+          times_used: number | null
+          updated_at: string
+          user_id: string
+          vulnerability_type: string | null
+        }
+        Insert: {
+          attack_chain: Json
+          created_at?: string
+          embedding_data?: Json | null
+          id?: string
+          service_signature?: string | null
+          success_rate?: number | null
+          target_type: string
+          times_used?: number | null
+          updated_at?: string
+          user_id: string
+          vulnerability_type?: string | null
+        }
+        Update: {
+          attack_chain?: Json
+          created_at?: string
+          embedding_data?: Json | null
+          id?: string
+          service_signature?: string | null
+          success_rate?: number | null
+          target_type?: string
+          times_used?: number | null
+          updated_at?: string
+          user_id?: string
+          vulnerability_type?: string | null
+        }
+        Relationships: []
+      }
       attack_attempts: {
         Row: {
           attack_type: string
