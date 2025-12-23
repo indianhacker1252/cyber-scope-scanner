@@ -26,6 +26,7 @@ import { WebHackersWeapons } from "@/components/dashboard/WebHackersWeapons";
 import AIHub from "@/components/dashboard/AIHub";
 import ScanningHub from "@/components/dashboard/ScanningHub";
 import SecurityTestingHub from "@/components/dashboard/SecurityTestingHub";
+import ApexSentinel from "@/components/dashboard/ApexSentinel";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -38,6 +39,8 @@ const Index = () => {
         return <TargetInput onNavigateToResults={() => setActiveSection("scan-results")} />;
       case "ai-hub":
         return <AIHub />;
+      case "apex-sentinel":
+        return <ApexSentinel />;
       case "threat-intel":
         return <ThreatIntelligence />;
       case "security-advisor":
