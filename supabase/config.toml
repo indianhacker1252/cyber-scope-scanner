@@ -30,3 +30,8 @@ verify_jwt = true
 [functions.ai-tool-orchestrator]
 verify_jwt = true
 
+[functions.apex-sentinel]
+verify_jwt = true
+
+[functions.ai-learning]
+verify_jwt = true
