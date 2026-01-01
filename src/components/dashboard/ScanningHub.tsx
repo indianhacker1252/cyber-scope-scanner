@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAILearning } from "@/hooks/useAILearning";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { 
@@ -38,12 +39,14 @@ interface ScanResult {
 
 const ScanningHub = () => {
   const { toast } = useToast();
+  const { withLearning, getRecommendations, lastAnalysis } = useAILearning();
   const [activeTab, setActiveTab] = useState("recon");
   const [target, setTarget] = useState("");
   const [scanType, setScanType] = useState("basic");
   const [isScanning, setIsScanning] = useState(false);
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
   const [currentOutput, setCurrentOutput] = useState("");
+  const [aiRecommendation, setAiRecommendation] = useState<string>("");
 
   const runScan = async (scanName: string, scanAction: string) => {
     if (!target) {
@@ -65,31 +68,38 @@ const ScanningHub = () => {
     setScanResults(prev => [newResult, ...prev]);
 
     try {
-      const { data, error } = await supabase.functions.invoke('security-scan', {
-        body: { 
-          target, 
-          scanType: scanAction,
-          options: { intensity: scanType }
+      // Use AI learning wrapper for automatic learning
+      const { result, analysis } = await withLearning(
+        scanAction,
+        target,
+        async () => {
+          const { data, error } = await supabase.functions.invoke('security-scan', {
+            body: { target, scanType: scanAction, options: { intensity: scanType } }
+          });
+          if (error) throw error;
+          return {
+            findings: data.findings || data.vulnerabilities || [],
+            output: data.output || data.results || JSON.stringify(data, null, 2),
+            success: true
+          };
+        },
+        { scanType, intensity: scanType }
+      );
+
+      if (result) {
+        setCurrentOutput(prev => prev + `\n${result.output}\n\n✅ Scan completed. AI Learning recorded.`);
+        if (analysis?.improvement_strategy) {
+          setCurrentOutput(prev => prev + `\n🤖 AI Insight: ${analysis.improvement_strategy}`);
         }
-      });
+        
+        setScanResults(prev => prev.map(r => 
+          r.id === newResult.id 
+            ? { ...r, status: 'completed', output: result.output, findings: result.findings }
+            : r
+        ));
 
-      if (error) throw error;
-
-      const output = data.output || data.results || JSON.stringify(data, null, 2);
-      const findings = data.findings || data.vulnerabilities || [];
-
-      setCurrentOutput(prev => prev + `\n${output}\n\nScan completed successfully.`);
-      
-      setScanResults(prev => prev.map(r => 
-        r.id === newResult.id 
-          ? { ...r, status: 'completed', output, findings }
-          : r
-      ));
-
-      toast({ 
-        title: `${scanName} Complete`, 
-        description: `Found ${findings.length} items` 
-      });
+        toast({ title: `${scanName} Complete`, description: `Found ${result.findings.length} items` });
+      }
     } catch (error: any) {
       setCurrentOutput(prev => prev + `\nError: ${error.message}`);
       

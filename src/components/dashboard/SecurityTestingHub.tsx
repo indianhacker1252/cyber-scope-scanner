@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useAILearning } from "@/hooks/useAILearning";
 import { 
   Zap, 
   Cloud, 
@@ -38,6 +39,7 @@ interface TestResult {
 
 const SecurityTestingHub = () => {
   const { toast } = useToast();
+  const { withLearning, lastAnalysis } = useAILearning();
   const [activeTab, setActiveTab] = useState("api");
   const [target, setTarget] = useState("");
   const [apiEndpoint, setApiEndpoint] = useState("");
