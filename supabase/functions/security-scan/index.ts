@@ -108,18 +108,18 @@ serve(async (req) => {
     );
 
     const authHeader = req.headers.get('Authorization');
-    const { data: { user } } = await supabase.auth.getUser(
-      authHeader?.replace('Bearer ', '') ?? ''
-    );
-
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    let user = null;
+    
+    if (authHeader) {
+      const { data: { user: authUser } } = await supabase.auth.getUser(
+        authHeader.replace('Bearer ', '')
+      );
+      user = authUser;
     }
 
-    console.log(`[Security Scan] User ${user.id} - Type: ${scanType} - Target: ${target} - Category: ${category || 'general'}`);
+    // Allow anonymous scans but with limitations
+    const userId = user?.id || 'anonymous';
+    console.log(`[Security Scan] User ${userId} - Type: ${scanType} - Target: ${target} - Category: ${category || 'general'}`);
 
     // Get the appropriate handler
     const handler = SCAN_HANDLERS[scanType];
@@ -142,17 +142,19 @@ serve(async (req) => {
     // Execute the scan
     const result = await handler(target, options);
 
-    // Save to database
-    for (const finding of result.findings) {
-      await supabase.from('scan_reports').insert({
-        user_id: user.id,
-        target,
-        scan_type: scanType,
-        vulnerability_name: finding.name,
-        severity: finding.severity,
-        proof_of_concept: finding.poc || finding.description,
-        scan_output: result.output
-      });
+    // Save to database only if authenticated
+    if (user) {
+      for (const finding of result.findings) {
+        await supabase.from('scan_reports').insert({
+          user_id: user.id,
+          target,
+          scan_type: scanType,
+          vulnerability_name: finding.name,
+          severity: finding.severity,
+          proof_of_concept: finding.poc || finding.description,
+          scan_output: result.output
+        });
+      }
     }
 
     return new Response(JSON.stringify({

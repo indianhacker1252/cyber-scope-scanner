@@ -7,7 +7,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.security-scan]
-verify_jwt = true
+verify_jwt = false
 
 [functions.threat-intelligence]
 verify_jwt = true
@@ -34,4 +34,4 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.ai-learning]
-verify_jwt = true
+verify_jwt = false

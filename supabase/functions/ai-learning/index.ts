@@ -32,18 +32,20 @@ serve(async (req) => {
     );
 
     const authHeader = req.headers.get('Authorization');
-    const { data: { user } } = await supabase.auth.getUser(
-      authHeader?.replace('Bearer ', '') ?? ''
-    );
-
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    let user = null;
+    
+    if (authHeader) {
+      const { data: { user: authUser } } = await supabase.auth.getUser(
+        authHeader.replace('Bearer ', '')
+      );
+      user = authUser;
     }
 
-    console.log(`[AI Learning] Action: ${action} by user ${user.id}`);
+    // For unauthenticated users, return anonymous learning responses
+    const userId = user?.id || 'anonymous';
+    console.log(`[AI Learning] User: ${userId} - Action: ${action}`);
+
+    // Handle actions based on authentication status
 
     switch (action) {
       case 'record-learning': {
@@ -60,7 +62,7 @@ serve(async (req) => {
 
         // Store the learning
         const { error: insertError } = await supabase.from('ai_learnings').insert({
-          user_id: user.id,
+          user_id: userId,
           tool_used: entry.tool_used,
           target: entry.target,
           findings: entry.findings,
@@ -92,7 +94,7 @@ serve(async (req) => {
         const { data: pastLearnings } = await supabase
           .from('ai_learnings')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .eq('tool_used', tool)
           .order('created_at', { ascending: false })
           .limit(10);
@@ -121,7 +123,7 @@ serve(async (req) => {
         const { data: allLearnings } = await supabase
           .from('ai_learnings')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .eq('tool_used', tool)
           .order('created_at', { ascending: false })
           .limit(50);
@@ -151,7 +153,7 @@ serve(async (req) => {
         const { data: allLearnings } = await supabase
           .from('ai_learnings')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(100);
 
