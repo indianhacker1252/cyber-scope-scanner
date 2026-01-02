@@ -69,7 +69,7 @@ const ScanningHub = () => {
 
     try {
       // Use AI learning wrapper for automatic learning
-      const { result, analysis } = await withLearning(
+      const { result, analysis } = await withLearning<{ findings: any[]; output: string; success: boolean }>(
         scanAction,
         target,
         async () => {
@@ -87,18 +87,21 @@ const ScanningHub = () => {
       );
 
       if (result) {
-        setCurrentOutput(prev => prev + `\n${result.output}\n\n✅ Scan completed. AI Learning recorded.`);
+        const scanOutput = result.output || '';
+        const scanFindings = result.findings || [];
+        
+        setCurrentOutput(prev => prev + `\n${scanOutput}\n\n✅ Scan completed. AI Learning recorded.`);
         if (analysis?.improvement_strategy) {
           setCurrentOutput(prev => prev + `\n🤖 AI Insight: ${analysis.improvement_strategy}`);
         }
         
         setScanResults(prev => prev.map(r => 
           r.id === newResult.id 
-            ? { ...r, status: 'completed', output: result.output, findings: result.findings }
+            ? { ...r, status: 'completed', output: scanOutput, findings: scanFindings }
             : r
         ));
 
-        toast({ title: `${scanName} Complete`, description: `Found ${result.findings.length} items` });
+        toast({ title: `${scanName} Complete`, description: `Found ${scanFindings.length} items` });
       }
     } catch (error: any) {
       setCurrentOutput(prev => prev + `\nError: ${error.message}`);
