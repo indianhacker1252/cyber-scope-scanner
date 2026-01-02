@@ -53,6 +53,7 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
       icon: Brain,
       items: [
         { id: "ai-hub", label: "AI Overview" },
+        { id: "ai-learning", label: "AI Learning Dashboard" },
         { id: "apex-sentinel", label: "Apex Sentinel" },
         { id: "attack-visualization", label: "Live Visualization" },
         { id: "threat-intel", label: "Threat Intelligence" },

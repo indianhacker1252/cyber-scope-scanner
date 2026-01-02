@@ -106,33 +106,50 @@ const SecurityTestingHub = () => {
     setTestResults(prev => [newResult, ...prev]);
 
     try {
-      const { data, error } = await supabase.functions.invoke('security-scan', {
-        body: { 
-          target: target || apiEndpoint, 
-          scanType: testId,
-          category,
-          options: {}
+      // Use AI learning wrapper for automatic learning
+      const { result, analysis } = await withLearning<{ findings: any[]; output: string; success: boolean }>(
+        testId,
+        target || apiEndpoint,
+        async () => {
+          const { data, error } = await supabase.functions.invoke('security-scan', {
+            body: { 
+              target: target || apiEndpoint, 
+              scanType: testId,
+              category,
+              options: {}
+            }
+          });
+          if (error) throw error;
+          return {
+            findings: data.findings || data.vulnerabilities || [],
+            output: data.output || data.results || JSON.stringify(data, null, 2),
+            success: true
+          };
+        },
+        { category, testName }
+      );
+
+      if (result) {
+        const scanOutput = result.output || '';
+        const findings = result.findings || [];
+
+        setOutput(prev => prev + scanOutput + `\n\n✅ ${testName} completed successfully.`);
+        if (analysis?.improvement_strategy) {
+          setOutput(prev => prev + `\n🤖 AI Insight: ${analysis.improvement_strategy}`);
         }
-      });
+        
+        setScanResult(newResult.id, {
+          status: 'completed',
+          output: scanOutput,
+          findings,
+          severity: findings.length > 0 ? 'high' : 'info'
+        });
 
-      if (error) throw error;
-
-      const scanOutput = data.output || data.results || JSON.stringify(data, null, 2);
-      const findings = data.findings || data.vulnerabilities || [];
-
-      setOutput(prev => prev + scanOutput + `\n\n✅ ${testName} completed successfully.`);
-      
-      setScanResult(newResult.id, {
-        status: 'completed',
-        output: scanOutput,
-        findings,
-        severity: findings.length > 0 ? 'high' : 'info'
-      });
-
-      toast({ 
-        title: `${testName} Complete`, 
-        description: `Found ${findings.length} issues` 
-      });
+        toast({ 
+          title: `${testName} Complete`, 
+          description: `Found ${findings.length} issues. AI Learning recorded.` 
+        });
+      }
     } catch (error: any) {
       setOutput(prev => prev + `\n❌ Error: ${error.message}`);
       

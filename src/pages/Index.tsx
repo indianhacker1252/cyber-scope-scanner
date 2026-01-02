@@ -24,6 +24,7 @@ import { SecurityAdvisor } from "@/components/security/SecurityAdvisor";
 import AttackVisualization from "@/components/dashboard/AttackVisualization";
 import { WebHackersWeapons } from "@/components/dashboard/WebHackersWeapons";
 import AIHub from "@/components/dashboard/AIHub";
+import AILearningDashboard from "@/components/dashboard/AILearningDashboard";
 import ScanningHub from "@/components/dashboard/ScanningHub";
 import SecurityTestingHub from "@/components/dashboard/SecurityTestingHub";
 import ApexSentinel from "@/components/dashboard/ApexSentinel";
@@ -39,6 +40,8 @@ const Index = () => {
         return <TargetInput onNavigateToResults={() => setActiveSection("scan-results")} />;
       case "ai-hub":
         return <AIHub />;
+      case "ai-learning":
+        return <AILearningDashboard />;
       case "apex-sentinel":
         return <ApexSentinel />;
       case "threat-intel":
