@@ -41,9 +41,10 @@ serve(async (req) => {
       user = authUser;
     }
 
-    // For unauthenticated users, return anonymous learning responses
-    const userId = user?.id || 'anonymous';
-    console.log(`[AI Learning] User: ${userId} - Action: ${action}`);
+    // For unauthenticated users, provide responses but don't persist to DB
+    const userId = user?.id || null;
+    const isAuthenticated = !!userId;
+    console.log(`[AI Learning] User: ${userId || 'anonymous'} - Action: ${action} - Authenticated: ${isAuthenticated}`);
 
     // Handle actions based on authentication status
 
@@ -60,28 +61,31 @@ serve(async (req) => {
           context: entry.context
         });
 
-        // Store the learning
-        const { error: insertError } = await supabase.from('ai_learnings').insert({
-          user_id: userId,
-          tool_used: entry.tool_used,
-          target: entry.target,
-          findings: entry.findings,
-          success: entry.success,
-          execution_time: entry.execution_time,
-          ai_analysis: aiAnalysis.analysis,
-          improvement_strategy: aiAnalysis.improvement_strategy,
-          success_rate: aiAnalysis.success_rate
-        });
+        // Only store in database if authenticated
+        if (isAuthenticated) {
+          const { error: insertError } = await supabase.from('ai_learnings').insert({
+            user_id: userId,
+            tool_used: entry.tool_used,
+            target: entry.target,
+            findings: entry.findings,
+            success: entry.success,
+            execution_time: entry.execution_time,
+            ai_analysis: aiAnalysis.analysis,
+            improvement_strategy: aiAnalysis.improvement_strategy,
+            success_rate: aiAnalysis.success_rate
+          });
 
-        if (insertError) {
-          console.error('Error inserting learning:', insertError);
-          throw insertError;
+          if (insertError) {
+            console.error('Error inserting learning:', insertError);
+            // Don't throw - still return the analysis
+          }
         }
 
         return new Response(JSON.stringify({
           success: true,
           analysis: aiAnalysis,
-          message: 'Learning recorded and analyzed'
+          message: isAuthenticated ? 'Learning recorded and analyzed' : 'Analysis complete (login to persist learnings)',
+          persisted: isAuthenticated
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -90,27 +94,31 @@ serve(async (req) => {
       case 'get-recommendations': {
         const { tool, target, context } = data;
 
-        // Get past learnings for similar scenarios
-        const { data: pastLearnings } = await supabase
-          .from('ai_learnings')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('tool_used', tool)
-          .order('created_at', { ascending: false })
-          .limit(10);
+        // Get past learnings for similar scenarios (only if authenticated)
+        let pastLearnings: any[] = [];
+        if (isAuthenticated) {
+          const { data: learningsData } = await supabase
+            .from('ai_learnings')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('tool_used', tool)
+            .order('created_at', { ascending: false })
+            .limit(10);
+          pastLearnings = learningsData || [];
+        }
 
         // Generate recommendations based on past learnings
         const recommendations = await generateRecommendations({
           tool,
           target,
           context,
-          pastLearnings: pastLearnings || []
+          pastLearnings
         });
 
         return new Response(JSON.stringify({
           success: true,
           recommendations,
-          past_learnings_count: pastLearnings?.length || 0
+          past_learnings_count: pastLearnings.length
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -119,45 +127,53 @@ serve(async (req) => {
       case 'analyze-improvement': {
         const { tool, target } = data;
 
-        // Get all learnings for this tool
-        const { data: allLearnings } = await supabase
-          .from('ai_learnings')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('tool_used', tool)
-          .order('created_at', { ascending: false })
-          .limit(50);
+        // Get all learnings for this tool (only if authenticated)
+        let allLearnings: any[] = [];
+        if (isAuthenticated) {
+          const { data: learningsData } = await supabase
+            .from('ai_learnings')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('tool_used', tool)
+            .order('created_at', { ascending: false })
+            .limit(50);
+          allLearnings = learningsData || [];
+        }
 
         // Calculate improvement metrics
-        const metrics = calculateImprovementMetrics(allLearnings || []);
+        const metrics = calculateImprovementMetrics(allLearnings);
         
         // Get AI insights
         const insights = await getImprovementInsights({
           tool,
           metrics,
-          recentLearnings: allLearnings?.slice(0, 10) || []
+          recentLearnings: allLearnings.slice(0, 10)
         });
 
         return new Response(JSON.stringify({
           success: true,
           metrics,
           insights,
-          total_learnings: allLearnings?.length || 0
+          total_learnings: allLearnings.length
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
       case 'get-learning-summary': {
-        // Get overall learning summary
-        const { data: allLearnings } = await supabase
-          .from('ai_learnings')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(100);
+        // Get overall learning summary (only if authenticated)
+        let allLearnings: any[] = [];
+        if (isAuthenticated) {
+          const { data: learningsData } = await supabase
+            .from('ai_learnings')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(100);
+          allLearnings = learningsData || [];
+        }
 
-        const summary = generateLearningSummary(allLearnings || []);
+        const summary = generateLearningSummary(allLearnings);
 
         return new Response(JSON.stringify({
           success: true,
