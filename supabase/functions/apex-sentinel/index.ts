@@ -340,22 +340,25 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    // Auth check
+    // Auth check - allow unauthenticated but track it
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    let userId: string | null = null;
+    let isAuthenticated = false;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '');
+      try {
+        const { data, error: claimsError } = await supabase.auth.getClaims(token);
+        if (!claimsError && data?.claims?.sub) {
+          userId = data.claims.sub as string;
+          isAuthenticated = true;
+        }
+      } catch (e) {
+        console.log('[Apex Sentinel] Auth failed, continuing as anonymous:', e);
+      }
     }
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Invalid token' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    console.log(`[Apex Sentinel] User: ${userId || 'anonymous'} - Authenticated: ${isAuthenticated}`);
 
     const { action, data } = await req.json();
     console.log(`[Apex Sentinel] Action: ${action}`, JSON.stringify(data).substring(0, 200));
@@ -370,10 +373,29 @@ serve(async (req) => {
         // Perform initial fingerprinting
         const fingerprint = await performInitialFingerprint(target, targetType);
         
+        // If not authenticated, return fingerprint without persisting session
+        if (!isAuthenticated || !userId) {
+          return new Response(JSON.stringify({ 
+            success: true, 
+            session: {
+              id: `temp-${Date.now()}`,
+              target,
+              target_type: targetType || 'domain',
+              status: 'initializing',
+              authorized: isAuthorized,
+              target_map: fingerprint
+            }, 
+            fingerprint,
+            note: 'Session not persisted - login required for persistence'
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        
         const { data: session, error } = await supabase
           .from('apex_sessions')
           .insert({
-            user_id: user.id,
+            user_id: userId,
             session_name: sessionName || `Apex-${Date.now()}`,
             target,
             target_type: targetType || 'domain',
@@ -473,38 +495,59 @@ Respond with JSON: { priority_vectors: [], tool_recommendations: {}, success_est
 
       // ============= AI PAYLOAD GENERATION =============
       case 'generate-payloads': {
-        const { sessionId, vulnType, context } = data;
+        const { sessionId, vulnType, context, target, mutations, count, adaptiveMode, wafDetected } = data;
         
-        const { data: session } = await supabase.from('apex_sessions').select('*').eq('id', sessionId).single();
+        // Support both session-based and direct target calls
+        let sessionData = null;
+        if (sessionId) {
+          const { data: session } = await supabase.from('apex_sessions').select('*').eq('id', sessionId).single();
+          sessionData = session;
+        }
         
-        // Get historical successful payloads
-        const { data: successfulPayloads } = await supabase
-          .from('apex_successful_chains')
-          .select('*')
-          .eq('vulnerability_type', vulnType)
-          .order('success_rate', { ascending: false })
-          .limit(10);
+        const effectiveTarget = sessionData?.target || target || 'unknown';
+        const effectiveWaf = wafDetected ?? context?.waf ?? false;
+        
+        // Get historical successful payloads (only if authenticated)
+        let successfulPayloads: any[] = [];
+        if (isAuthenticated) {
+          const { data: historicalPayloads } = await supabase
+            .from('apex_successful_chains')
+            .select('*')
+            .eq('vulnerability_type', vulnType)
+            .order('success_rate', { ascending: false })
+            .limit(10);
+          successfulPayloads = historicalPayloads || [];
+        }
 
-        const payloads = generatePayload(vulnType, { ...context, waf_detected: context?.waf });
+        const payloads = generatePayload(vulnType, { 
+          ...context, 
+          waf_detected: effectiveWaf,
+          mutations: mutations || []
+        });
         
         // AI-enhanced payload generation
         const aiPayloads = await analyzeWithAI(`
 Generate advanced ${vulnType} payloads for this context:
-Target: ${session?.target}
-Tech Stack: ${JSON.stringify(session?.target_map?.techStack || {})}
-WAF Detected: ${context?.waf || false}
+Target: ${effectiveTarget}
+Tech Stack: ${JSON.stringify(sessionData?.target_map?.techStack || {})}
+WAF Detected: ${effectiveWaf}
+Mutations Requested: ${JSON.stringify(mutations || [])}
+Adaptive Mode: ${adaptiveMode || false}
+Count Requested: ${count || 5}
 Historical Successes: ${JSON.stringify(successfulPayloads?.slice(0, 3) || [])}
 
-Generate 5 novel payloads that:
+Generate ${count || 5} novel payloads that:
 1. Evade common WAF rules
 2. Are context-specific
 3. Have high success probability
+4. Use the requested mutation strategies
 
 Respond with JSON: { payloads: [{ payload: string, confidence: number, mutation: string, reasoning: string }] }
         `, supabase);
 
         return new Response(JSON.stringify({ 
           success: true, 
+          payloads: aiPayloads.payloads || [],
           staticPayloads: payloads, 
           aiPayloads: aiPayloads.payloads || [],
           historicalSuccess: successfulPayloads 
