@@ -13,20 +13,24 @@ serve(async (req) => {
   }
 
   try {
-    // Authentication
+    // Handle authentication gracefully - allow anonymous usage
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      { global: { headers: { Authorization: req.headers.get('Authorization') || '' } } }
     );
 
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    let userId: string | null = null;
+    try {
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (user) {
+        userId = user.id;
+      }
+    } catch {
+      // Continue as anonymous
     }
+    
+    console.log(`Exa Proxy - User: ${userId || 'anonymous'}`);
 
     const requestBody = await req.json();
     
