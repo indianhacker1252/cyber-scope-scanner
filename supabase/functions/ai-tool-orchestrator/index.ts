@@ -161,23 +161,23 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
     
+    // Handle authentication gracefully - allow anonymous usage with limited features
+    let userId: string | null = null;
+    let isAuthenticated = false;
+    
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'No authorization header' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
-
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    if (authHeader) {
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser(
+          authHeader.replace('Bearer ', '')
+        );
+        if (!authError && user) {
+          userId = user.id;
+          isAuthenticated = true;
+        }
+      } catch {
+        // Continue as anonymous
+      }
     }
 
     const { action, data } = await req.json();
@@ -198,29 +198,34 @@ serve(async (req) => {
         const sanitizedUserInput = sanitizeForPrompt(userInputValidation.data);
         const sanitizedTarget = targetValidation.success ? targetValidation.data : '';
         
-        // Fetch previous learnings to improve decision making
-        const { data: learnings } = await supabase
-          .from('ai_learnings')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(20);
+        // Fetch previous learnings to improve decision making (only for authenticated users)
+        let learningContext = 'No previous learnings';
+        let successContext = 'No successful attacks recorded';
+        
+        if (isAuthenticated && userId) {
+          const { data: learnings } = await supabase
+            .from('ai_learnings')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(20);
 
-        const { data: successfulAttempts } = await supabase
-          .from('attack_attempts')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('success', true)
-          .order('created_at', { ascending: false })
-          .limit(10);
+          const { data: successfulAttempts } = await supabase
+            .from('attack_attempts')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('success', true)
+            .order('created_at', { ascending: false })
+            .limit(10);
 
-        const learningContext = learnings?.map(l => 
-          `Tool: ${sanitizeForPrompt(l.tool_used)}, Success: ${l.success_rate}%, Strategy: ${sanitizeForPrompt(l.improvement_strategy || '')}`
-        ).join('\n') || 'No previous learnings';
+          learningContext = learnings?.map(l => 
+            `Tool: ${sanitizeForPrompt(l.tool_used)}, Success: ${l.success_rate}%, Strategy: ${sanitizeForPrompt(l.improvement_strategy || '')}`
+          ).join('\n') || 'No previous learnings';
 
-        const successContext = successfulAttempts?.map(a =>
-          `Attack: ${sanitizeForPrompt(a.attack_type)} on ${sanitizeForPrompt(a.target)} - Technique: ${sanitizeForPrompt(a.technique)}`
-        ).join('\n') || 'No successful attacks recorded';
+          successContext = successfulAttempts?.map(a =>
+            `Attack: ${sanitizeForPrompt(a.attack_type)} on ${sanitizeForPrompt(a.target)} - Technique: ${sanitizeForPrompt(a.technique)}`
+          ).join('\n') || 'No successful attacks recorded';
+        }
 
         const toolDescriptions = Object.entries(AVAILABLE_TOOLS)
           .map(([key, tool]) => `${key}: ${tool.description}`)
@@ -292,15 +297,17 @@ Respond with a JSON object containing:
           };
         }
 
-        // Store the analysis decision for learning
-        await supabase.from('ai_decisions').insert({
-          user_id: user.id,
-          user_input: userInput,
-          target: target,
-          analysis: analysis,
-          tools_selected: analysis.recommended_tools,
-          created_at: new Date().toISOString()
-        });
+        // Store the analysis decision for learning (only for authenticated users)
+        if (isAuthenticated && userId) {
+          await supabase.from('ai_decisions').insert({
+            user_id: userId,
+            user_input: sanitizedUserInput,
+            target: sanitizedTarget,
+            analysis: analysis,
+            tools_selected: analysis.recommended_tools,
+            created_at: new Date().toISOString()
+          });
+        }
 
         return new Response(JSON.stringify({ 
           success: true, 
@@ -350,40 +357,52 @@ Provide:
         const aiData = await aiResponse.json();
         const aiAnalysis = aiData.choices[0]?.message?.content || '';
 
-        // Store learning
-        const { data: learning, error } = await supabase.from('ai_learnings').insert({
-          user_id: user.id,
-          tool_used,
-          target,
-          findings: findings,
-          success,
-          execution_time,
-          ai_analysis: aiAnalysis,
-          improvement_strategy: aiAnalysis,
-          success_rate: success ? 100 : 0,
-          created_at: new Date().toISOString()
-        }).select().single();
+        // Store learning (only for authenticated users)
+        let learning = null;
+        if (isAuthenticated && userId) {
+          const { data: learningData } = await supabase.from('ai_learnings').insert({
+            user_id: userId,
+            tool_used,
+            target,
+            findings: findings,
+            success,
+            execution_time,
+            ai_analysis: aiAnalysis,
+            improvement_strategy: aiAnalysis,
+            success_rate: success ? 100 : 0,
+            created_at: new Date().toISOString()
+          }).select().single();
+          learning = learningData;
+        }
 
-        return new Response(JSON.stringify({ success: true, learning }), {
+        return new Response(JSON.stringify({ success: true, learning, aiAnalysis }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
       case 'get-learnings': {
-        // Retrieve AI learnings for display
-        const { data: learnings } = await supabase
-          .from('ai_learnings')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(50);
+        // Retrieve AI learnings for display (only for authenticated users)
+        let learnings: any[] = [];
+        let decisions: any[] = [];
+        
+        if (isAuthenticated && userId) {
+          const { data: learningsData } = await supabase
+            .from('ai_learnings')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(50);
 
-        const { data: decisions } = await supabase
-          .from('ai_decisions')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(20);
+          const { data: decisionsData } = await supabase
+            .from('ai_decisions')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(20);
+          
+          learnings = learningsData || [];
+          decisions = decisionsData || [];
+        }
 
         // Calculate stats
         const totalLearnings = learnings?.length || 0;
@@ -414,20 +433,26 @@ Provide:
         // Generate comprehensive attack plan based on learnings
         const { target, objective } = data;
 
-        const { data: learnings } = await supabase
-          .from('ai_learnings')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('success', true)
-          .limit(30);
+        let historicalData = 'No history';
+        
+        if (isAuthenticated && userId) {
+          const { data: learnings } = await supabase
+            .from('ai_learnings')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('success', true)
+            .limit(30);
+          
+          historicalData = learnings?.map(l => `- ${l.tool_used}: ${l.success ? 'Success' : 'Failed'} on similar target`).join('\n') || 'No history';
+        }
 
         const planPrompt = `Create a comprehensive penetration testing attack plan.
 
-TARGET: ${target}
-OBJECTIVE: ${objective}
+TARGET: ${sanitizeForPrompt(target || '')}
+OBJECTIVE: ${sanitizeForPrompt(objective || '')}
 
 HISTORICAL SUCCESS DATA:
-${learnings?.map(l => `- ${l.tool_used}: ${l.success ? 'Success' : 'Failed'} on similar target`).join('\n') || 'No history'}
+${historicalData}
 
 AVAILABLE TOOLS: ${Object.keys(AVAILABLE_TOOLS).join(', ')}
 
