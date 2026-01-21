@@ -31,7 +31,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.apex-sentinel]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-learning]
 verify_jwt = false
