@@ -14,6 +14,7 @@
 // Real Kali Linux Tools Manager - NO DEMO MODE
 import { ScanResult, ToolConfig, AutomatedScanConfig } from './kaliTools';
 import { API_CONFIG } from '@/config/apiConfig';
+import { supabase } from '@/integrations/supabase/client';
 
 interface StreamingCallback {
   onOutput?: (data: string) => void;
@@ -32,6 +33,45 @@ export class RealKaliToolsManager {
       RealKaliToolsManager.instance = new RealKaliToolsManager();
     }
     return RealKaliToolsManager.instance;
+  }
+
+  // Get authentication token for API requests
+  private async getAuthToken(): Promise<string | null> {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error || !session) {
+        console.warn('[Auth] No valid session available');
+        return null;
+      }
+
+      // Check if token is about to expire (within 5 minutes)
+      const expiresAt = session.expires_at;
+      if (expiresAt && (expiresAt * 1000) - Date.now() < 5 * 60 * 1000) {
+        // Refresh token
+        const { data: { session: newSession } } = await supabase.auth.refreshSession();
+        return newSession?.access_token || null;
+      }
+
+      return session.access_token;
+    } catch (error) {
+      console.error('[Auth] Failed to get session:', error);
+      return null;
+    }
+  }
+
+  // Build headers with optional authentication
+  private async buildHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    
+    const authToken = await this.getAuthToken();
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    
+    return headers;
   }
 
   // Check if we're actually in Kali Linux environment
@@ -83,12 +123,27 @@ export class RealKaliToolsManager {
     try {
       console.log(`[Nmap] Starting scan: ${target} (${scanType}) - Session: ${sessionId}`);
       
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_NMAP}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ target, scanType, sessionId }),
         signal: controller.signal
       });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => response.statusText);
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
+        throw new Error(`Nmap scan failed: ${errorText}`);
+      }
+
+      console.log(`[Nmap] HTTP request successful, connecting WebSocket...`);
+      
+      // Use the robust streamResults method
+      return this.streamResults(sessionId, callback);
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => response.statusText);
@@ -120,14 +175,19 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_NIKTO}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ target, sessionId }),
         signal: controller.signal
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
         throw new Error(`Nikto scan failed: ${response.statusText}`);
       }
 
@@ -145,14 +205,19 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_SQLMAP}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ target, options, sessionId }),
         signal: controller.signal
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
         throw new Error(`SQLMap scan failed: ${response.statusText}`);
       }
 
@@ -170,14 +235,19 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_GOBUSTER}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ target, wordlist, sessionId }),
         signal: controller.signal
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
         throw new Error(`Gobuster scan failed: ${response.statusText}`);
       }
 
@@ -195,14 +265,19 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_AMASS}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ domain, sessionId }),
         signal: controller.signal
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
         throw new Error(`Amass scan failed: ${response.statusText}`);
       }
 
@@ -220,14 +295,19 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_DNS}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ domain, sessionId }),
         signal: controller.signal
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
         throw new Error(`DNS lookup failed: ${response.statusText}`);
       }
 
@@ -245,14 +325,19 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_WHOIS}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ domain, sessionId }),
         signal: controller.signal
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
         throw new Error(`WHOIS lookup failed: ${response.statusText}`);
       }
 
@@ -270,14 +355,19 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_SSL}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ domain, sessionId }),
         signal: controller.signal
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
         throw new Error(`SSL analysis failed: ${response.statusText}`);
       }
 
@@ -295,14 +385,19 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_NUCLEI}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ target, templates, sessionId }),
         signal: controller.signal
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
         throw new Error(`Nuclei scan failed: ${response.statusText}`);
       }
 
@@ -320,14 +415,19 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_WHATWEB}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ target, sessionId }),
         signal: controller.signal
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
         throw new Error(`WhatWeb scan failed: ${response.statusText}`);
       }
 
@@ -345,14 +445,19 @@ export class RealKaliToolsManager {
     this.activeSessions.set(sessionId, controller);
 
     try {
+      const headers = await this.buildHeaders();
+      
       const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.SCAN_SUBLIST3R}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ domain, sessionId }),
         signal: controller.signal
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please login first.');
+        }
         throw new Error(`Sublist3r scan failed: ${response.statusText}`);
       }
 
