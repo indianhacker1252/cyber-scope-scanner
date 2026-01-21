@@ -25,8 +25,12 @@ import AttackVisualization from "@/components/dashboard/AttackVisualization";
 import { WebHackersWeapons } from "@/components/dashboard/WebHackersWeapons";
 import AIHub from "@/components/dashboard/AIHub";
 import AILearningDashboard from "@/components/dashboard/AILearningDashboard";
+import AIPayloadEngine from "@/components/dashboard/AIPayloadEngine";
 import ScanningHub from "@/components/dashboard/ScanningHub";
+import ScopeDiscovery from "@/components/dashboard/ScopeDiscovery";
+import AttackSurfaceMapping from "@/components/dashboard/AttackSurfaceMapping";
 import SecurityTestingHub from "@/components/dashboard/SecurityTestingHub";
+import VulnerabilityEngine from "@/components/dashboard/VulnerabilityEngine";
 import ApexSentinel from "@/components/dashboard/ApexSentinel";
 
 const Index = () => {
@@ -42,6 +46,8 @@ const Index = () => {
         return <AIHub />;
       case "ai-learning":
         return <AILearningDashboard />;
+      case "ai-payload-engine":
+        return <AIPayloadEngine />;
       case "apex-sentinel":
         return <ApexSentinel />;
       case "threat-intel":
@@ -52,10 +58,16 @@ const Index = () => {
         return <AttackVisualization />;
       case "scanning-hub":
         return <ScanningHub />;
+      case "scope-discovery":
+        return <ScopeDiscovery />;
+      case "attack-surface":
+        return <AttackSurfaceMapping />;
       case "vapt-auto":
         return <AutomatedVAPT />;
       case "security-testing-hub":
         return <SecurityTestingHub />;
+      case "vulnerability-engine":
+        return <VulnerabilityEngine />;
       case "webhackers-weapons":
         return <WebHackersWeapons />;
       case "scan-results":

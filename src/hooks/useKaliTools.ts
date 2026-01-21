@@ -37,7 +37,7 @@ export const useKaliTools = () => {
     }
   }, [activeSessions]);
 
-  // Check if running in Kali Linux - NO DEMO MODE ALLOWED
+  // Check if running in Kali Linux - gracefully handle cloud mode
   useEffect(() => {
     const checkEnvironment = async () => {
       try {
@@ -46,13 +46,9 @@ export const useKaliTools = () => {
         setIsKaliEnvironment(isKali);
         
         if (!isKali) {
-          console.error('[Environment Check] NOT running on Kali Linux');
-          toast({
-            title: "⚠️ Not Running on Kali Linux",
-            description: "This tool requires Kali Linux environment. Backend reports non-Kali system.",
-            variant: "destructive",
-            duration: 10000
-          });
+          console.log('[Environment Check] Running in Cloud Mode (no local Kali backend)');
+          // Don't show error toast in cloud mode - this is expected
+          // Cloud mode uses Supabase edge functions instead
         } else {
           console.log('[Environment Check] ✓ Kali Linux detected');
           toast({
@@ -65,18 +61,11 @@ export const useKaliTools = () => {
         console.log(`[Environment Check] ${tools.length} tools detected`);
         setInstalledTools(tools);
       } catch (error: any) {
-        console.error('[Environment Check] CRITICAL FAILURE:', {
-          error: error.message,
-          stack: error.stack,
-          timestamp: new Date().toISOString()
-        });
+        // In cloud mode, backend connection failure is expected
+        // We'll use edge functions instead
+        console.log('[Environment Check] Running in Cloud Mode - using edge functions');
         setIsKaliEnvironment(false);
-        toast({
-          title: "❌ Backend Connection Failed",
-          description: `Cannot connect to backend server: ${error.message}. Start backend with: cd server && node index.js`,
-          variant: "destructive",
-          duration: 15000
-        });
+        // No error toast - cloud mode is valid
       } finally {
         setIsLoading(false);
       }
