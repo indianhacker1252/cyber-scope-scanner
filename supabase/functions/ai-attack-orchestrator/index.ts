@@ -175,15 +175,21 @@ serve(async (req) => {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      { global: { headers: { Authorization: req.headers.get('Authorization') || '' } } }
     );
 
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Handle authentication gracefully - allow anonymous usage with limited features
+    let userId: string | null = null;
+    let isAuthenticated = false;
+    
+    try {
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (user) {
+        userId = user.id;
+        isAuthenticated = true;
+      }
+    } catch {
+      // Continue as anonymous
     }
 
     const { action, data: requestData } = await req.json();
@@ -193,7 +199,7 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    console.log(`AI Orchestrator - Action: ${action}, User: ${user.id}`);
+    console.log(`AI Orchestrator - Action: ${action}, User: ${userId || 'anonymous'}`);
 
 switch (action) {
       case 'analyze-target': {
@@ -297,17 +303,19 @@ Return JSON:
           analysis = { raw: aiData.choices[0].message.content };
         }
 
-        // Store target intelligence
-        await supabaseClient.from('target_intelligence').upsert({
-          user_id: user.id,
-          target,
-          tech_stack: analysis.tech_stack,
-          vulnerabilities: analysis.vulnerabilities,
-          attack_surface: analysis.attack_surface,
-          weak_points: analysis.weak_points,
-          ai_recommendations: analysis.recommended_attack_chain,
-          last_scanned: new Date().toISOString()
-        });
+        // Store target intelligence (only for authenticated users)
+        if (isAuthenticated && userId) {
+          await supabaseClient.from('target_intelligence').upsert({
+            user_id: userId,
+            target,
+            tech_stack: analysis.tech_stack,
+            vulnerabilities: analysis.vulnerabilities,
+            attack_surface: analysis.attack_surface,
+            weak_points: analysis.weak_points,
+            ai_recommendations: analysis.recommended_attack_chain,
+            last_scanned: new Date().toISOString()
+          });
+        }
 
         return new Response(JSON.stringify({ success: true, analysis }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -362,13 +370,15 @@ Analyze why the attack failed and provide adaptive strategies in JSON:
         const aiData = await aiResponse.json();
         const learning = JSON.parse(aiData.choices[0].message.content);
 
-        // Store learning
-        await supabaseClient.from('attack_learnings').insert({
-          attack_attempt_id,
-          failure_reason: learning.failure_analysis,
-          adaptation_strategy: JSON.stringify(learning.adaptation_strategies),
-          ai_analysis: learning.learnings
-        });
+        // Store learning (only if attack_attempt_id is provided)
+        if (attack_attempt_id) {
+          await supabaseClient.from('attack_learnings').insert({
+            attack_attempt_id,
+            failure_reason: learning.failure_analysis,
+            adaptation_strategy: JSON.stringify(learning.adaptation_strategies),
+            ai_analysis: learning.learnings
+          });
+        }
 
         return new Response(JSON.stringify({ success: true, learning }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -533,13 +543,17 @@ Create a multi-stage attack chain with MITRE mapping. Return JSON:
           chain = { raw: aiData.choices[0].message.content };
         }
 
-        const { data: chainData } = await supabaseClient.from('attack_chains').insert({
-          user_id: user.id,
-          target,
-          chain_name: chain.chain_name || `Attack on ${target}`,
-          attack_sequence: chain.attack_sequence || chain,
-          status: 'ready'
-        }).select().single();
+        let chainData = null;
+        if (isAuthenticated && userId) {
+          const { data } = await supabaseClient.from('attack_chains').insert({
+            user_id: userId,
+            target,
+            chain_name: chain.chain_name || `Attack on ${target}`,
+            attack_sequence: chain.attack_sequence || chain,
+            status: 'ready'
+          }).select().single();
+          chainData = data;
+        }
 
         return new Response(JSON.stringify({ 
           success: true, 
