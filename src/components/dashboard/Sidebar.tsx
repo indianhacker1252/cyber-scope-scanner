@@ -54,6 +54,7 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
       items: [
         { id: "ai-hub", label: "AI Overview" },
         { id: "ai-learning", label: "AI Learning Dashboard" },
+        { id: "ai-payload-engine", label: "AI Payload Engine" },
         { id: "apex-sentinel", label: "Apex Sentinel" },
         { id: "attack-visualization", label: "Live Visualization" },
         { id: "threat-intel", label: "Threat Intelligence" },
@@ -66,6 +67,8 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
       icon: Search,
       items: [
         { id: "scanning-hub", label: "Scanning Overview" },
+        { id: "scope-discovery", label: "Scope Discovery" },
+        { id: "attack-surface", label: "Attack Surface Mapping" },
         { id: "vapt-auto", label: "Automated VAPT" },
       ]
     },
@@ -75,6 +78,7 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
       icon: Shield,
       items: [
         { id: "security-testing-hub", label: "Testing Overview" },
+        { id: "vulnerability-engine", label: "Vulnerability Engine" },
         { id: "webhackers-weapons", label: "WebHackers Arsenal" },
       ]
     },

