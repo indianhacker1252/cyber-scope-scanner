@@ -10,28 +10,31 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.threat-intelligence]
-verify_jwt = true
+verify_jwt = false
 
 [functions.security-advisor]
-verify_jwt = true
+verify_jwt = false
 
 [functions.openai-proxy]
-verify_jwt = true
+verify_jwt = false
 
 [functions.exa-proxy]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-attack-orchestrator]
-verify_jwt = true
+verify_jwt = false
 
 [functions.autonomous-attack-executor]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-tool-orchestrator]
-verify_jwt = true
+verify_jwt = false
 
 [functions.apex-sentinel]
 verify_jwt = false
 
 [functions.ai-learning]
+verify_jwt = false
+
+[functions.continuous-red-team-agent]
 verify_jwt = false
