@@ -56,6 +56,7 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
         { id: "ai-learning", label: "AI Learning Dashboard" },
         { id: "ai-payload-engine", label: "AI Payload Engine" },
         { id: "apex-sentinel", label: "Apex Sentinel" },
+        { id: "continuous-red-team", label: "Continuous Red Team" },
         { id: "attack-visualization", label: "Live Visualization" },
         { id: "threat-intel", label: "Threat Intelligence" },
         { id: "security-advisor", label: "Security Advisor" },

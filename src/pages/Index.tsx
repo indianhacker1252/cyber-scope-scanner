@@ -32,6 +32,7 @@ import AttackSurfaceMapping from "@/components/dashboard/AttackSurfaceMapping";
 import SecurityTestingHub from "@/components/dashboard/SecurityTestingHub";
 import VulnerabilityEngine from "@/components/dashboard/VulnerabilityEngine";
 import ApexSentinel from "@/components/dashboard/ApexSentinel";
+import ContinuousRedTeamAgent from "@/components/dashboard/ContinuousRedTeamAgent";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -50,6 +51,8 @@ const Index = () => {
         return <AIPayloadEngine />;
       case "apex-sentinel":
         return <ApexSentinel />;
+      case "continuous-red-team":
+        return <ContinuousRedTeamAgent />;
       case "threat-intel":
         return <ThreatIntelligence />;
       case "security-advisor":
