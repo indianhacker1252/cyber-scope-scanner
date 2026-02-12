@@ -183,9 +183,23 @@ const ContinuousRedTeamAgent = () => {
 
       if (error) throw error;
 
-      addOutput(`Operation completed with ${data.findings?.length || 0} findings`, 'success');
+      // Show phase-by-phase output from real scans
+      if (data.phase_outputs) {
+        Object.entries(data.phase_outputs).forEach(([phase, lines]: [string, any]) => {
+          addOutput(`\n━━━ Phase: ${phase.toUpperCase()} ━━━`, 'info');
+          if (Array.isArray(lines)) {
+            lines.forEach((line: string) => {
+              const type = line.includes('findings') && !line.includes('0 findings') ? 'success' : 'info';
+              addOutput(line, type);
+            });
+          }
+        });
+      }
+      addOutput(`\n━━━ OPERATION COMPLETE ━━━`, 'success');
+      addOutput(`Total findings: ${data.findings?.length || 0}`, 'success');
       addOutput(`Correlations identified: ${data.correlations?.length || 0}`, 'info');
       addOutput(`Attack chains generated: ${data.attack_chains?.length || 0}`, 'info');
+      addOutput(`Total scans executed: ${data.total_scans || 'N/A'}`, 'info');
 
       setStatus(prev => ({
         ...prev,
