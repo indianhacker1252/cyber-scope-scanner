@@ -13,8 +13,49 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Require admin authentication - only existing admins can create default users
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+      
+      if (!claimsError && claimsData?.claims?.sub) {
+        // Verify caller is admin
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', claimsData.claims.sub)
+          .eq('role', 'admin')
+          .maybeSingle();
+
+        if (!roleData) {
+          return new Response(JSON.stringify({ error: 'Admin access required' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      } else {
+        return new Response(JSON.stringify({ error: 'Invalid token' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      // Allow unauthenticated access ONLY if no users exist yet (initial setup)
+      const { count } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true });
+
+      if (count && count > 0) {
+        return new Response(JSON.stringify({ error: 'Authentication required. Default user setup is only available during initial setup or by admins.' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     // Check if default user already exists
     const { data: existingProfile } = await supabase
@@ -32,7 +73,7 @@ serve(async (req) => {
       });
     }
 
-    // Create default user with username 'kali' and password 'kali'
+    // Create default user
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: 'kali@vapt.local',
       password: 'kali',
