@@ -340,25 +340,24 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    // Auth check - allow unauthenticated but track it
+    // Require authentication
     const authHeader = req.headers.get('Authorization');
-    let userId: string | null = null;
-    let isAuthenticated = false;
-
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '');
-      try {
-        const { data, error: claimsError } = await supabase.auth.getClaims(token);
-        if (!claimsError && data?.claims?.sub) {
-          userId = data.claims.sub as string;
-          isAuthenticated = true;
-        }
-      } catch (e) {
-        console.log('[Apex Sentinel] Auth failed, continuing as anonymous:', e);
-      }
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Authentication required' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
+    
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims?.sub) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const userId = claimsData.claims.sub as string;
 
-    console.log(`[Apex Sentinel] User: ${userId || 'anonymous'} - Authenticated: ${isAuthenticated}`);
+    console.log(`[Apex Sentinel] User: ${userId}`);
 
     const { action, data } = await req.json();
     console.log(`[Apex Sentinel] Action: ${action}`, JSON.stringify(data).substring(0, 200));
@@ -373,24 +372,7 @@ serve(async (req) => {
         // Perform initial fingerprinting
         const fingerprint = await performInitialFingerprint(target, targetType);
         
-        // If not authenticated, return fingerprint without persisting session
-        if (!isAuthenticated || !userId) {
-          return new Response(JSON.stringify({ 
-            success: true, 
-            session: {
-              id: `temp-${Date.now()}`,
-              target,
-              target_type: targetType || 'domain',
-              status: 'initializing',
-              authorized: isAuthorized,
-              target_map: fingerprint
-            }, 
-            fingerprint,
-            note: 'Session not persisted - login required for persistence'
-          }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
+        // User is authenticated, persist session
         
         const { data: session, error } = await supabase
           .from('apex_sessions')

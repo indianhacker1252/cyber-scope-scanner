@@ -161,24 +161,23 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    // Handle authentication gracefully - allow anonymous usage with limited features
-    let userId: string | null = null;
-    let isAuthenticated = false;
-    
+    // Require authentication
     const authHeader = req.headers.get('Authorization');
-    if (authHeader) {
-      try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser(
-          authHeader.replace('Bearer ', '')
-        );
-        if (!authError && user) {
-          userId = user.id;
-          isAuthenticated = true;
-        }
-      } catch {
-        // Continue as anonymous
-      }
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Authentication required' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const userId = user.id;
 
     const { action, data } = await req.json();
 
@@ -202,7 +201,7 @@ serve(async (req) => {
         let learningContext = 'No previous learnings';
         let successContext = 'No successful attacks recorded';
         
-        if (isAuthenticated && userId) {
+        {
           const { data: learnings } = await supabase
             .from('ai_learnings')
             .select('*')
@@ -297,8 +296,8 @@ Respond with a JSON object containing:
           };
         }
 
-        // Store the analysis decision for learning (only for authenticated users)
-        if (isAuthenticated && userId) {
+        // Store the analysis decision
+        {
           await supabase.from('ai_decisions').insert({
             user_id: userId,
             user_input: sanitizedUserInput,
@@ -357,9 +356,9 @@ Provide:
         const aiData = await aiResponse.json();
         const aiAnalysis = aiData.choices[0]?.message?.content || '';
 
-        // Store learning (only for authenticated users)
+        // Store learning
         let learning = null;
-        if (isAuthenticated && userId) {
+        {
           const { data: learningData } = await supabase.from('ai_learnings').insert({
             user_id: userId,
             tool_used,
@@ -385,7 +384,7 @@ Provide:
         let learnings: any[] = [];
         let decisions: any[] = [];
         
-        if (isAuthenticated && userId) {
+        {
           const { data: learningsData } = await supabase
             .from('ai_learnings')
             .select('*')
@@ -435,7 +434,7 @@ Provide:
 
         let historicalData = 'No history';
         
-        if (isAuthenticated && userId) {
+        {
           const { data: learnings } = await supabase
             .from('ai_learnings')
             .select('*')

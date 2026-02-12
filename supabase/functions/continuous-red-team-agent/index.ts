@@ -146,23 +146,24 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Handle authentication gracefully
+    // Require authentication
     const authHeader = req.headers.get('Authorization');
-    let userId: string | null = null;
-    
-    if (authHeader) {
-      try {
-        const { data: { user } } = await supabase.auth.getUser(
-          authHeader.replace('Bearer ', '')
-        );
-        if (user) userId = user.id;
-      } catch {
-        // Continue as anonymous
-      }
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Authentication required' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
     
-    const isAuthenticated = !!userId;
-    console.log(`[Continuous Red Team Agent] User: ${userId || 'anonymous'} - Action: ${action}`);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const userId = user.id;
+    console.log(`[Continuous Red Team Agent] User: ${userId} - Action: ${action}`);
 
     switch (action) {
       case 'start-continuous-operation': {
@@ -185,8 +186,8 @@ serve(async (req) => {
         // Start the continuous operation cycle
         const result = await executeContinuousOperation(agentState, objective, config);
 
-        // Persist session if authenticated
-        if (isAuthenticated) {
+        // Persist session
+        {
           await supabase.from('attack_chains').insert({
             user_id: userId,
             target,
@@ -205,7 +206,7 @@ serve(async (req) => {
           success: true,
           session_id: sessionId,
           ...result,
-          persisted: isAuthenticated
+          persisted: true
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -237,8 +238,8 @@ serve(async (req) => {
           context
         );
 
-        // Persist learning if authenticated
-        if (isAuthenticated) {
+        // Persist learning
+        {
           await supabase.from('ai_learnings').insert({
             user_id: userId,
             tool_used: technique,
@@ -266,7 +267,7 @@ serve(async (req) => {
 
         // Load historical context
         let historicalData: any[] = [];
-        if (isAuthenticated) {
+        {
           const { data: learnings } = await supabase
             .from('ai_learnings')
             .select('*')

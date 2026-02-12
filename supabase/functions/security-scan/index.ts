@@ -108,17 +108,22 @@ serve(async (req) => {
     );
 
     const authHeader = req.headers.get('Authorization');
-    let user = null;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Authentication required' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     
-    if (authHeader) {
-      const { data: { user: authUser } } = await supabase.auth.getUser(
-        authHeader.replace('Bearer ', '')
-      );
-      user = authUser;
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Allow anonymous scans but with limitations
-    const userId = user?.id || 'anonymous';
+    const userId = user.id;
     console.log(`[Security Scan] User ${userId} - Type: ${scanType} - Target: ${target} - Category: ${category || 'general'}`);
 
     // Get the appropriate handler
@@ -142,8 +147,8 @@ serve(async (req) => {
     // Execute the scan
     const result = await handler(target, options);
 
-    // Save to database only if authenticated
-    if (user) {
+    // Save to database
+    {
       for (const finding of result.findings) {
         await supabase.from('scan_reports').insert({
           user_id: user.id,

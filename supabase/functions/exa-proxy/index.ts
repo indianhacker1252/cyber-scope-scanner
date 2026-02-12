@@ -20,17 +20,15 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get('Authorization') || '' } } }
     );
 
-    let userId: string | null = null;
-    try {
-      const { data: { user } } = await supabaseClient.auth.getUser();
-      if (user) {
-        userId = user.id;
-      }
-    } catch {
-      // Continue as anonymous
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Authentication required' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
     
-    console.log(`Exa Proxy - User: ${userId || 'anonymous'}`);
+    console.log(`Exa Proxy - User: ${user.id}`);
 
     const requestBody = await req.json();
     

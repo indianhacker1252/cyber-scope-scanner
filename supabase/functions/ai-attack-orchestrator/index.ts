@@ -178,19 +178,15 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get('Authorization') || '' } } }
     );
 
-    // Handle authentication gracefully - allow anonymous usage with limited features
-    let userId: string | null = null;
-    let isAuthenticated = false;
-    
-    try {
-      const { data: { user } } = await supabaseClient.auth.getUser();
-      if (user) {
-        userId = user.id;
-        isAuthenticated = true;
-      }
-    } catch {
-      // Continue as anonymous
+    // Require authentication
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Authentication required' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
+    const userId = user.id;
 
     const { action, data: requestData } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -303,8 +299,8 @@ Return JSON:
           analysis = { raw: aiData.choices[0].message.content };
         }
 
-        // Store target intelligence (only for authenticated users)
-        if (isAuthenticated && userId) {
+        // Store target intelligence
+        {
           await supabaseClient.from('target_intelligence').upsert({
             user_id: userId,
             target,
@@ -544,7 +540,7 @@ Create a multi-stage attack chain with MITRE mapping. Return JSON:
         }
 
         let chainData = null;
-        if (isAuthenticated && userId) {
+        {
           const { data } = await supabaseClient.from('attack_chains').insert({
             user_id: userId,
             target,
