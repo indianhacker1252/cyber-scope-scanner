@@ -32,19 +32,22 @@ serve(async (req) => {
     );
 
     const authHeader = req.headers.get('Authorization');
-    let user = null;
-    
-    if (authHeader) {
-      const { data: { user: authUser } } = await supabase.auth.getUser(
-        authHeader.replace('Bearer ', '')
-      );
-      user = authUser;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Authentication required' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
-
-    // For unauthenticated users, provide responses but don't persist to DB
-    const userId = user?.id || null;
-    const isAuthenticated = !!userId;
-    console.log(`[AI Learning] User: ${userId || 'anonymous'} - Action: ${action} - Authenticated: ${isAuthenticated}`);
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const userId = user.id;
+    console.log(`[AI Learning] User: ${userId} - Action: ${action}`);
 
     // Handle actions based on authentication status
 
@@ -61,8 +64,8 @@ serve(async (req) => {
           context: entry.context
         });
 
-        // Only store in database if authenticated
-        if (isAuthenticated) {
+        // Store in database
+        {
           const { error: insertError } = await supabase.from('ai_learnings').insert({
             user_id: userId,
             tool_used: entry.tool_used,
@@ -84,8 +87,8 @@ serve(async (req) => {
         return new Response(JSON.stringify({
           success: true,
           analysis: aiAnalysis,
-          message: isAuthenticated ? 'Learning recorded and analyzed' : 'Analysis complete (login to persist learnings)',
-          persisted: isAuthenticated
+          message: 'Learning recorded and analyzed',
+          persisted: true
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -94,9 +97,9 @@ serve(async (req) => {
       case 'get-recommendations': {
         const { tool, target, context } = data;
 
-        // Get past learnings for similar scenarios (only if authenticated)
+        // Get past learnings for similar scenarios
         let pastLearnings: any[] = [];
-        if (isAuthenticated) {
+        {
           const { data: learningsData } = await supabase
             .from('ai_learnings')
             .select('*')
@@ -127,9 +130,9 @@ serve(async (req) => {
       case 'analyze-improvement': {
         const { tool, target } = data;
 
-        // Get all learnings for this tool (only if authenticated)
+        // Get all learnings for this tool
         let allLearnings: any[] = [];
-        if (isAuthenticated) {
+        {
           const { data: learningsData } = await supabase
             .from('ai_learnings')
             .select('*')
@@ -161,9 +164,9 @@ serve(async (req) => {
       }
 
       case 'get-learning-summary': {
-        // Get overall learning summary (only if authenticated)
+        // Get overall learning summary
         let allLearnings: any[] = [];
-        if (isAuthenticated) {
+        {
           const { data: learningsData } = await supabase
             .from('ai_learnings')
             .select('*')
