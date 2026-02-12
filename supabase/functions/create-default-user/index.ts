@@ -65,12 +65,22 @@ serve(async (req) => {
       .maybeSingle();
 
     if (existingProfile) {
-      return new Response(JSON.stringify({ 
-        message: 'Default user already exists',
-        exists: true 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      // Verify the auth user actually exists
+      const { data: authCheck, error: authCheckError } = await supabase.auth.admin.getUserById(existingProfile.id);
+      
+      if (!authCheckError && authCheck?.user) {
+        return new Response(JSON.stringify({ 
+          message: 'Default user already exists',
+          exists: true 
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      // Auth user is missing (orphaned profile) - clean up and recreate
+      console.log('Orphaned profile found, cleaning up...');
+      await supabase.from('user_roles').delete().eq('user_id', existingProfile.id);
+      await supabase.from('profiles').delete().eq('id', existingProfile.id);
     }
 
     // Create default user
