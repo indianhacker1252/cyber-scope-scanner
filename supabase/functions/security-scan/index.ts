@@ -86,6 +86,19 @@ interface Finding {
   poc?: string;
   remediation?: string;
 }
+// Helper: fetch with 8-second timeout
+async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeout);
+    return response;
+  } catch (e) {
+    clearTimeout(timeout);
+    throw e;
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -115,14 +128,13 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
     
-    const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims?.sub) {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData?.user) {
       return new Response(JSON.stringify({ error: 'Invalid token' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    const user = { id: claimsData.claims.sub as string };
+    const user = { id: userData.user.id };
 
     const userId = user.id;
     console.log(`[Security Scan] User ${userId} - Type: ${scanType} - Target: ${target} - Category: ${category || 'general'}`);
@@ -238,7 +250,7 @@ async function performSSLScan(target: string): Promise<ScanResult> {
 
   try {
     const url = target.startsWith('http') ? target : `https://${target}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     const headers = response.headers;
 
     output += `Certificate Status: Valid\n`;
@@ -281,7 +293,7 @@ async function performSubdomainEnum(target: string): Promise<ScanResult> {
   for (const sub of subdomains) {
     const fullDomain = `${sub}.${cleanTarget}`;
     try {
-      await fetch(`https://${fullDomain}`, { method: 'HEAD' });
+      await fetchWithTimeout(`https://${fullDomain}`, { method: 'HEAD' });
       found.push(fullDomain);
       output += `[+] ${fullDomain} - FOUND\n`;
     } catch {
@@ -307,7 +319,7 @@ async function performTechDetection(target: string): Promise<ScanResult> {
 
   try {
     const url = target.startsWith('http') ? target : `https://${target}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     const headers = response.headers;
     const html = await response.text();
 
@@ -473,7 +485,7 @@ async function performDirectoryEnum(target: string): Promise<ScanResult> {
   for (const dir of dirs) {
     try {
       const url = target.startsWith('http') ? target : `https://${target}`;
-      const response = await fetch(`${url}${dir}`, { method: 'HEAD' });
+      const response = await fetchWithTimeout(`${url}${dir}`, { method: 'HEAD' });
       if (response.status !== 404) {
         found.push(dir);
         output += `[+] ${dir} - Status: ${response.status}\n`;
@@ -514,7 +526,7 @@ async function performHeaderAnalysis(target: string): Promise<ScanResult> {
 
   try {
     const url = target.startsWith('http') ? target : `https://${target}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     const headers = response.headers;
 
     const secHeaders = [
@@ -550,7 +562,7 @@ async function performCookieAnalysis(target: string): Promise<ScanResult> {
 
   try {
     const url = target.startsWith('http') ? target : `https://${target}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     const cookies = response.headers.get('set-cookie');
 
     if (cookies) {
@@ -580,7 +592,7 @@ async function performFormAnalysis(target: string): Promise<ScanResult> {
   
   try {
     const url = target.startsWith('http') ? target : `https://${target}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     const html = await response.text();
     
     const formCount = (html.match(/<form/gi) || []).length;
@@ -645,7 +657,7 @@ async function performCSRFTest(target: string): Promise<ScanResult> {
 
   try {
     const url = target.startsWith('http') ? target : `https://${target}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     const html = await response.text();
     
     if (!html.includes('csrf') && !html.includes('_token')) {
@@ -779,7 +791,7 @@ async function performCORSTest(target: string): Promise<ScanResult> {
 
   try {
     const url = target.startsWith('http') ? target : `https://${target}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     const corsHeader = response.headers.get('access-control-allow-origin');
     
     output += `Access-Control-Allow-Origin: ${corsHeader || 'Not set'}\n`;
