@@ -165,76 +165,94 @@ const ContinuousRedTeamAgent = () => {
     addOutput(`Objective: ${objective} | Max Iterations: ${maxIterations}`, 'info');
     addOutput(`Auto-Adapt: ${autoAdapt} | Stealth Mode: ${stealthMode}`, 'info');
 
+    const allFindings: Finding[] = [];
+    const allCorrelations: Correlation[] = [];
+    const allAttackChains: AttackChain[] = [];
+    const phases = ['recon', 'scanning', 'exploitation', 'post-exploit'];
+
     try {
-      const { data, error } = await supabase.functions.invoke('continuous-red-team-agent', {
-        body: {
-          action: 'start-continuous-operation',
-          data: {
-            target,
-            objective,
-            max_iterations: maxIterations,
-            config: {
-              auto_adapt: autoAdapt,
-              stealth_mode: stealthMode
-            }
-          }
-        }
-      });
+      for (const phase of phases) {
+        addOutput(`\n━━━ Phase: ${phase.toUpperCase()} ━━━`, 'info');
+        setStatus(prev => ({ ...prev, phase }));
 
-      if (error) throw error;
-
-      // Show phase-by-phase output from real scans
-      if (data.phase_outputs) {
-        Object.entries(data.phase_outputs).forEach(([phase, lines]: [string, any]) => {
-          addOutput(`\n━━━ Phase: ${phase.toUpperCase()} ━━━`, 'info');
-          if (Array.isArray(lines)) {
-            lines.forEach((line: string) => {
-              const type = line.includes('findings') && !line.includes('0 findings') ? 'success' : 'info';
-              addOutput(line, type);
-            });
+        const { data, error } = await supabase.functions.invoke('continuous-red-team-agent', {
+          body: {
+            action: 'run-phase',
+            data: { target, phase, config: { auto_adapt: autoAdapt, stealth_mode: stealthMode } }
           }
         });
+
+        if (error) {
+          addOutput(`${phase}: Edge function error - ${error.message}`, 'error');
+          continue;
+        }
+
+        if (data?.output && Array.isArray(data.output)) {
+          data.output.forEach((line: string) => {
+            const type = line.includes('findings') && !line.includes('0 findings') ? 'success' : 'info';
+            addOutput(line, type);
+          });
+        }
+
+        if (data?.findings?.length > 0) {
+          allFindings.push(...data.findings);
+          addOutput(`Phase ${phase} complete: ${data.findings.length} findings`, 'success');
+        } else {
+          addOutput(`Phase ${phase} complete: 0 findings`, 'warning');
+        }
+
+        // Update findings in real-time
+        setStatus(prev => ({
+          ...prev,
+          findings: [...allFindings],
+          progress: Math.round(((phases.indexOf(phase) + 1) / phases.length) * 100)
+        }));
       }
+
+      // Run correlation if we have findings
+      if (allFindings.length >= 2) {
+        addOutput(`\n━━━ CORRELATION ENGINE ━━━`, 'info');
+        const { data: corrData } = await supabase.functions.invoke('continuous-red-team-agent', {
+          body: {
+            action: 'correlate-findings',
+            data: { findings: allFindings, target_context: { target } }
+          }
+        });
+        if (corrData?.correlations) allCorrelations.push(...corrData.correlations);
+        if (corrData?.attack_chains) allAttackChains.push(...corrData.attack_chains);
+        addOutput(`Correlations: ${allCorrelations.length} | Attack chains: ${allAttackChains.length}`, 'success');
+      }
+
       addOutput(`\n━━━ OPERATION COMPLETE ━━━`, 'success');
-      addOutput(`Total findings: ${data.findings?.length || 0}`, 'success');
-      addOutput(`Correlations identified: ${data.correlations?.length || 0}`, 'info');
-      addOutput(`Attack chains generated: ${data.attack_chains?.length || 0}`, 'info');
-      addOutput(`Total scans executed: ${data.total_scans || 'N/A'}`, 'info');
+      addOutput(`Total findings: ${allFindings.length}`, 'success');
 
       setStatus(prev => ({
         ...prev,
         isRunning: false,
         phase: 'completed',
         progress: 100,
-        findings: data.findings || [],
-        correlations: data.correlations || [],
-        attackChains: data.attack_chains || [],
-        learningUpdates: data.learning_updates || []
+        findings: allFindings,
+        correlations: allCorrelations,
+        attackChains: allAttackChains,
       }));
 
-      // Update learning metrics
-      if (data.learning_updates?.length > 0) {
-        const successCount = data.learning_updates.filter((l: any) => l.success).length;
-        const failCount = data.learning_updates.filter((l: any) => !l.success).length;
-        
-        setLearningMetrics(prev => ({
-          ...prev,
-          successfulTechniques: prev.successfulTechniques + successCount,
-          failedTechniques: prev.failedTechniques + failCount,
-          adaptationsApplied: data.learning_updates.filter((l: any) => l.adaptation_strategy).length,
-          modelConfidence: data.learning_updates[data.learning_updates.length - 1]?.confidence || prev.modelConfidence
-        }));
-      }
+      const successCount = allFindings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
+      setLearningMetrics(prev => ({
+        ...prev,
+        successfulTechniques: prev.successfulTechniques + (allFindings.length > 0 ? phases.length : 0),
+        failedTechniques: prev.failedTechniques + (allFindings.length === 0 ? phases.length : 0),
+        modelConfidence: Math.min(0.95, prev.modelConfidence + (allFindings.length * 0.02))
+      }));
 
       toast({
         title: "Operation Complete",
-        description: `Found ${data.findings?.length || 0} vulnerabilities with ${data.correlations?.length || 0} attack paths`
+        description: `Found ${allFindings.length} vulnerabilities with ${allCorrelations.length} attack paths`
       });
 
     } catch (error: any) {
       console.error('Operation error:', error);
       addOutput(`Error: ${error.message}`, 'error');
-      setStatus(prev => ({ ...prev, isRunning: false, phase: 'error' }));
+      setStatus(prev => ({ ...prev, isRunning: false, phase: 'error', findings: allFindings }));
       toast({
         title: "Operation Failed",
         description: error.message,
