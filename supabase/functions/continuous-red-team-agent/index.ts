@@ -201,6 +201,24 @@ serve(async (req) => {
         // Run a single phase with real scans
         const phaseResult = await executePhase(phase, target, authHeader);
         
+        // Record learning for AI fine-tuning
+        try {
+          await supabase.from('ai_learnings').insert({
+            user_id: userId,
+            tool_used: `red-team-${phase}`,
+            target,
+            findings: phaseResult.findings || [],
+            success: (phaseResult.findings?.length || 0) > 0,
+            execution_time: phaseResult.execution_time || 0,
+            ai_analysis: `Phase ${phase}: ${phaseResult.findings?.length || 0} findings from ${phaseResult.scans_completed || 0} scans`,
+            improvement_strategy: phaseResult.findings?.length > 0
+              ? `${phase} effective - found ${phaseResult.findings.map((f: any) => f.type).join(', ')}`
+              : `${phase} yielded no findings - consider expanding scan scope or adjusting parameters`
+          });
+        } catch (e) {
+          console.warn('[AI Learning] Failed to record:', e);
+        }
+        
         return new Response(JSON.stringify({
           success: true,
           phase,
@@ -304,6 +322,9 @@ serve(async (req) => {
 
 async function callSecurityScan(scanType: string, target: string, authHeader: string): Promise<any> {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000); // 25s timeout per scan
+
     const response = await fetch(`${SUPABASE_URL}/functions/v1/security-scan`, {
       method: 'POST',
       headers: {
@@ -311,8 +332,11 @@ async function callSecurityScan(scanType: string, target: string, authHeader: st
         'Content-Type': 'application/json',
         'apikey': SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify({ scanType, target, options: {} })
+      body: JSON.stringify({ scanType, target, options: {} }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -322,6 +346,10 @@ async function callSecurityScan(scanType: string, target: string, authHeader: st
 
     return await response.json();
   } catch (error) {
+    if (error.name === 'AbortError') {
+      console.warn(`[security-scan ${scanType}] Timed out after 25s`);
+      return { success: false, error: 'Scan timed out', scanType, target };
+    }
     console.error(`[security-scan ${scanType}] Error:`, error);
     return { success: false, error: error.message, scanType, target };
   }
