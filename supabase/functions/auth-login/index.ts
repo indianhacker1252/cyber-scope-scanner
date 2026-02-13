@@ -134,12 +134,13 @@ serve(async (req) => {
       ip_address: req.headers.get('x-forwarded-for') || 'unknown'
     });
 
-    // Get user role
-    const { data: userRole } = await supabase
+    // Get user role (prefer admin over user)
+    const { data: userRoles } = await supabase
       .from('user_roles')
       .select('role')
-      .eq('user_id', profile.id)
-      .single();
+      .eq('user_id', profile.id);
+    
+    const userRole = userRoles?.find(r => r.role === 'admin') || userRoles?.[0];
 
     return new Response(JSON.stringify({ 
       session: signInData.session,

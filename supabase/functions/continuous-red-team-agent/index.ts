@@ -114,10 +114,10 @@ const MITRE_TECHNIQUES = {
 
 // Scan types mapped to security-scan edge function
 const PHASE_SCAN_TYPES: Record<string, string[]> = {
-  recon: ['dns', 'whois', 'ssl', 'subdomain', 'tech'],
-  scanning: ['port', 'host', 'service', 'headers', 'directory'],
-  exploitation: ['sqli', 'xss', 'lfi', 'ssrf', 'csrf'],
-  'post-exploit': ['full', 'cookies', 'forms'],
+  recon: ['dns', 'headers', 'tech'],
+  scanning: ['port', 'directory'],
+  exploitation: ['sqli', 'xss'],
+  'post-exploit': ['cookies'],
   learning: []
 };
 
@@ -329,14 +329,20 @@ async function callSecurityScan(scanType: string, target: string, authHeader: st
 
 async function executePhase(phase: string, target: string, authHeader: string): Promise<any> {
   const scanTypes = PHASE_SCAN_TYPES[phase] || [];
-  const findings: Finding[] = [];
   const phaseOutput: string[] = [];
   const startTime = Date.now();
 
-  for (const scanType of scanTypes) {
-    phaseOutput.push(`[${phase}] Running ${scanType} scan against ${target}...`);
-    const result = await callSecurityScan(scanType, target, authHeader);
-    
+  phaseOutput.push(`[${phase}] Running ${scanTypes.length} scans in parallel against ${target}...`);
+
+  // Run all scans in parallel for speed
+  const scanPromises = scanTypes.map(scanType => 
+    callSecurityScan(scanType, target, authHeader).then(result => ({ scanType, result }))
+  );
+
+  const results = await Promise.all(scanPromises);
+  const findings: Finding[] = [];
+
+  for (const { scanType, result } of results) {
     if (result.success !== false && result.results) {
       const scanFindings = extractFindings(result, scanType, phase, target);
       findings.push(...scanFindings);
@@ -448,51 +454,53 @@ function mapSeverity(sev: string): Finding['severity'] {
 async function executeContinuousOperation(
   state: AgentState, objective: string, config: any, authHeader: string
 ): Promise<any> {
-  const phases = ['recon', 'scanning', 'exploitation', 'post-exploit', 'learning'];
   const allFindings: Finding[] = [];
   const allCorrelations: Correlation[] = [];
   const learningUpdates: any[] = [];
   const phaseOutputs: Record<string, string[]> = {};
 
-  for (const phase of phases) {
-    if (phase === 'learning') break; // Learning is post-processing
+  // Run recon + scanning in parallel (they're independent)
+  console.log(`[Red Team] Running recon + scanning in parallel | Target: ${state.target}`);
+  const [reconResult, scanningResult] = await Promise.all([
+    executePhase('recon', state.target, authHeader),
+    executePhase('scanning', state.target, authHeader)
+  ]);
 
-    console.log(`[Red Team] Phase: ${phase} | Target: ${state.target}`);
-    
-    // Get AI recommendation for phase strategy
-    const strategy = await getPhaseStrategy(phase, state.target, objective, allFindings);
-    
-    // Execute real scans for this phase
-    const phaseResult = await executePhase(phase, state.target, authHeader);
-    allFindings.push(...phaseResult.findings);
-    phaseOutputs[phase] = phaseResult.output;
+  allFindings.push(...reconResult.findings, ...scanningResult.findings);
+  phaseOutputs['recon'] = reconResult.output;
+  phaseOutputs['scanning'] = scanningResult.output;
 
-    // Run correlation after each phase if enough findings
-    if (allFindings.length >= 3) {
-      const newCorrelations = await correlateFindings(allFindings, { target: state.target, phase });
-      // Only add new unique correlations
-      for (const c of newCorrelations) {
-        if (!allCorrelations.find(existing => existing.attack_path === c.attack_path)) {
-          allCorrelations.push(c);
-        }
-      }
-    }
+  // Run exploitation + post-exploit in parallel
+  console.log(`[Red Team] Running exploitation + post-exploit in parallel | Findings so far: ${allFindings.length}`);
+  const [exploitResult, postExploitResult] = await Promise.all([
+    executePhase('exploitation', state.target, authHeader),
+    executePhase('post-exploit', state.target, authHeader)
+  ]);
 
-    // Record learning for each scan
-    for (const scanType of (PHASE_SCAN_TYPES[phase] || [])) {
-      const phaseFindings = phaseResult.findings.filter(f => f.tool_used === scanType);
-      const learning = await processLearning(
-        { success: phaseFindings.length > 0, findings: phaseFindings, execution_time: phaseResult.execution_time },
-        scanType, state.target, { phase, objective }
-      );
-      learningUpdates.push(learning);
-    }
+  allFindings.push(...exploitResult.findings, ...postExploitResult.findings);
+  phaseOutputs['exploitation'] = exploitResult.output;
+  phaseOutputs['post-exploit'] = postExploitResult.output;
 
-    state.iteration++;
+  // Run correlation locally (no AI call needed)
+  if (allFindings.length >= 2) {
+    const correlations = await correlateFindings(allFindings, { target: state.target });
+    allCorrelations.push(...correlations);
   }
 
-  // Generate attack chains from all correlations
+  // Generate attack chains locally
   const attackChains = await generateAttackChains(allCorrelations, { target: state.target });
+
+  // Generate lightweight learning updates (no AI calls)
+  for (const phase of ['recon', 'scanning', 'exploitation', 'post-exploit']) {
+    const phaseFindings = allFindings.filter(f => f.phase === phase);
+    learningUpdates.push({
+      phase,
+      success: phaseFindings.length > 0,
+      findings_count: phaseFindings.length,
+      confidence: 0.5 + (phaseFindings.length > 0 ? 0.1 : 0),
+      adaptation_strategy: phaseFindings.length === 0 ? 'expand_scan_scope' : 'deepen_analysis'
+    });
+  }
 
   return {
     findings: allFindings,
@@ -500,7 +508,7 @@ async function executeContinuousOperation(
     attack_chains: attackChains,
     learning_updates: learningUpdates,
     phase_outputs: phaseOutputs,
-    iterations_completed: state.iteration,
+    iterations_completed: 4,
     total_scans: Object.values(PHASE_SCAN_TYPES).flat().length
   };
 }

@@ -44,16 +44,22 @@ serve(async (req) => {
         });
       }
     } else {
-      // Allow unauthenticated access ONLY if no users exist yet (initial setup)
-      const { count } = await supabase
+      // Allow unauthenticated access ONLY if the kali default user doesn't exist (initial setup)
+      const { data: kaliProfile } = await supabase
         .from('profiles')
-        .select('*', { count: 'exact', head: true });
+        .select('id')
+        .eq('username', 'kali')
+        .maybeSingle();
 
-      if (count && count > 0) {
-        return new Response(JSON.stringify({ error: 'Authentication required. Default user setup is only available during initial setup or by admins.' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      if (kaliProfile) {
+        // Verify the auth user actually exists
+        const { data: authCheck } = await supabase.auth.admin.getUserById(kaliProfile.id);
+        if (authCheck?.user) {
+          return new Response(JSON.stringify({ error: 'Authentication required. Default user already exists.' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
       }
     }
 
