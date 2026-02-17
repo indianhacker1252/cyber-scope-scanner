@@ -19,15 +19,17 @@ serve(async (req) => {
     // Require admin authentication - only existing admins can create default users
     const authHeader = req.headers.get('Authorization');
     if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '');
-      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+      const supabaseAuth = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } }
+      });
+      const { data: userData, error: userError } = await supabaseAuth.auth.getUser();
       
-      if (!claimsError && claimsData?.claims?.sub) {
+      if (!userError && userData?.user) {
         // Verify caller is admin
         const { data: roleData } = await supabase
           .from('user_roles')
           .select('role')
-          .eq('user_id', claimsData.claims.sub)
+          .eq('user_id', userData.user.id)
           .eq('role', 'admin')
           .maybeSingle();
 

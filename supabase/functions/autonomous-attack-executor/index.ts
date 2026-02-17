@@ -204,31 +204,49 @@ serve(async (req) => {
 });
 
 async function executeAttackStage(stage: any, target: string): Promise<any> {
-  // Map technique to Kali backend endpoint
-  const toolMap: any = {
-    'nmap': '/api/scan/nmap',
-    'nikto': '/api/scan/nikto',
-    'sqlmap': '/api/scan/sqlmap',
-    'gobuster': '/api/scan/gobuster',
-    'nuclei': '/api/scan/nuclei',
-    'hydra': '/api/scan/hydra',
-    'metasploit': '/api/scan/metasploit',
-    'wpscan': '/api/scan/wpscan'
+  // Map technique to security-scan scan types
+  const toolToScanType: Record<string, string> = {
+    'nmap': 'port',
+    'nikto': 'headers',
+    'sqlmap': 'sqli',
+    'gobuster': 'directory',
+    'nuclei': 'full',
+    'hydra': 'auth-bypass',
+    'metasploit': 'cve-scan',
+    'wpscan': 'tech',
+    'dalfox': 'xss',
+    'subfinder': 'subdomain',
+    'ffuf': 'directory',
+    'whatweb': 'tech',
   };
 
-  const endpoint = toolMap[stage.tool?.toLowerCase()] || '/api/scan/nmap';
+  const scanType = toolToScanType[stage.tool?.toLowerCase()] || 'headers';
   
   try {
-    // This would call your Kali backend
-    // For now, simulate execution
-    const simulatedSuccess = Math.random() > 0.3; // 70% success rate for demo
+    // Call security-scan edge function for real execution
+    const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/security-scan`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        'Content-Type': 'application/json',
+        'apikey': Deno.env.get('SUPABASE_ANON_KEY') || '',
+      },
+      body: JSON.stringify({ scanType, target, options: {} }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return { success: false, output: `Scan failed: ${errText}`, error: errText };
+    }
+
+    const result = await response.json();
+    const hasFindings = (result.findings?.length || 0) > 0;
     
     return {
-      success: simulatedSuccess,
-      output: simulatedSuccess ? 
-        `Stage ${stage.stage} executed successfully\n${stage.command}\nTarget: ${target}` :
-        `Stage ${stage.stage} failed\nError: Target may have defenses`,
-      error: simulatedSuccess ? null : 'Execution failed'
+      success: hasFindings || result.success,
+      output: result.output || `Stage ${stage.stage} completed via ${scanType} scan\n${hasFindings ? `Found ${result.findings.length} issue(s)` : 'No vulnerabilities detected'}`,
+      findings: result.findings || [],
+      error: hasFindings ? null : 'No vulnerabilities found'
     };
   } catch (error) {
     return {
