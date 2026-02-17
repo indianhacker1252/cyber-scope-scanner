@@ -371,7 +371,7 @@ async function executePhase(phase: string, target: string, authHeader: string): 
   const findings: Finding[] = [];
 
   for (const { scanType, result } of results) {
-    if (result.success !== false && result.results) {
+    if (result.success !== false) {
       const scanFindings = extractFindings(result, scanType, phase, target);
       findings.push(...scanFindings);
       phaseOutput.push(`[${phase}] ${scanType}: ${scanFindings.length} findings`);
@@ -390,73 +390,40 @@ async function executePhase(phase: string, target: string, authHeader: string): 
 
 function extractFindings(scanResult: any, scanType: string, phase: string, target: string): Finding[] {
   const findings: Finding[] = [];
-  const results = scanResult.results || scanResult;
   
-  // Parse structured results from security-scan
-  if (results.vulnerabilities && Array.isArray(results.vulnerabilities)) {
-    for (const vuln of results.vulnerabilities) {
+  // security-scan returns: { success, output, findings, vulnerabilities, scan_type, target, findings_count }
+  // The 'findings' and 'vulnerabilities' arrays contain the same data
+  const vulnArray = scanResult.findings || scanResult.vulnerabilities || [];
+  
+  if (Array.isArray(vulnArray) && vulnArray.length > 0) {
+    for (const vuln of vulnArray) {
       findings.push({
         id: crypto.randomUUID(),
-        type: vuln.type || scanType,
-        severity: mapSeverity(vuln.severity || vuln.risk || 'info'),
+        type: vuln.type || vuln.name || scanType,
+        severity: mapSeverity(vuln.severity || 'info'),
         title: vuln.name || vuln.title || `${scanType} finding`,
         description: vuln.description || vuln.detail || `Discovered via ${scanType}`,
-        evidence: { raw: vuln, scanType, target },
+        evidence: { raw: vuln, scanType, target, poc: vuln.poc, remediation: vuln.remediation },
         timestamp: new Date().toISOString(),
         phase,
         tool_used: scanType,
-        exploitable: vuln.exploitable ?? (vuln.severity === 'critical' || vuln.severity === 'high')
+        exploitable: vuln.severity === 'critical' || vuln.severity === 'high'
       });
     }
   }
 
-  // Parse flat results (ports, services, headers, etc.)
-  if (results.ports && Array.isArray(results.ports)) {
-    for (const port of results.ports) {
+  // If scan returned output but no structured findings, create a summary
+  if (findings.length === 0 && scanResult.output && typeof scanResult.output === 'string') {
+    // Check if output contains vulnerability indicators
+    const output = scanResult.output.toLowerCase();
+    if (output.includes('[vulnerable]') || output.includes('⚠️')) {
       findings.push({
         id: crypto.randomUUID(),
-        type: 'open_port',
-        severity: port.service?.includes('http') ? 'info' : 'low',
-        title: `Open port ${port.port}/${port.protocol || 'tcp'}`,
-        description: `Service: ${port.service || 'unknown'} | Version: ${port.version || 'unknown'}`,
-        evidence: { port, scanType, target },
-        timestamp: new Date().toISOString(),
-        phase,
-        tool_used: scanType,
-        exploitable: false
-      });
-    }
-  }
-
-  // Generic findings from scan output
-  if (results.findings && Array.isArray(results.findings)) {
-    for (const f of results.findings) {
-      findings.push({
-        id: crypto.randomUUID(),
-        type: f.type || scanType,
-        severity: mapSeverity(f.severity || 'info'),
-        title: f.title || f.name || `${scanType} discovery`,
-        description: f.description || f.detail || JSON.stringify(f).slice(0, 200),
-        evidence: { raw: f, scanType, target },
-        timestamp: new Date().toISOString(),
-        phase,
-        tool_used: scanType,
-        exploitable: f.exploitable ?? false
-      });
-    }
-  }
-
-  // If scan returned data but no structured findings, create a summary finding
-  if (findings.length === 0 && results && typeof results === 'object') {
-    const keys = Object.keys(results).filter(k => k !== 'scanType' && k !== 'target');
-    if (keys.length > 0) {
-      findings.push({
-        id: crypto.randomUUID(),
-        type: 'scan_data',
-        severity: 'info',
-        title: `${scanType} scan data collected`,
-        description: `Collected: ${keys.join(', ')}`,
-        evidence: { data: results, scanType, target },
+        type: scanType,
+        severity: 'medium',
+        title: `${scanType} scan detected issues`,
+        description: `Scan output indicates potential issues - review output for details`,
+        evidence: { output: scanResult.output?.slice(0, 500), scanType, target },
         timestamp: new Date().toISOString(),
         phase,
         tool_used: scanType,
