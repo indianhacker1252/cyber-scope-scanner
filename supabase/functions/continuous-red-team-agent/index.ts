@@ -36,6 +36,10 @@ interface Finding {
   tool_used: string;
   exploitable: boolean;
   correlated_with?: string[];
+  // Anti-false-positive fields
+  confidence?: number;        // 0–1: how confident we are this is real
+  verified?: boolean;         // true if confirmed by 2+ independent techniques
+  subdomain?: string;         // set when finding came from a subdomain scan
 }
 
 interface Correlation {
@@ -114,11 +118,23 @@ const MITRE_TECHNIQUES = {
 
 // Scan types mapped to security-scan edge function
 const PHASE_SCAN_TYPES: Record<string, string[]> = {
-  recon: ['dns', 'headers', 'tech'],
-  scanning: ['port', 'directory'],
-  exploitation: ['sqli', 'xss'],
-  'post-exploit': ['cookies'],
-  learning: []
+  recon:          ['dns', 'headers', 'tech', 'ssl'],
+  scanning:       ['port', 'directory', 'dir-traversal', 'cors-advanced'],
+  exploitation:   ['sqli', 'xss', 'lfi', 'ssrf', 'nosql-inject', 'cors-advanced', 'dir-traversal'],
+  'post-exploit': ['cookies', 'cookie-hijack', 'csrf', 'jwt-test'],
+  learning:       []
+};
+
+// Secondary verification scan types for each primary (anti-false-positive)
+const VERIFICATION_MAP: Record<string, string> = {
+  'sqli':          'sqli-blind',
+  'xss':           'headers',
+  'lfi':           'dir-traversal',
+  'cors-advanced': 'cors-test',
+  'dir-traversal': 'directory',
+  'cookies':       'cookie-hijack',
+  'ssrf':          'headers',
+  'nosql-inject':  'sqli',
 };
 
 serve(async (req) => {
@@ -362,30 +378,95 @@ async function executePhase(phase: string, target: string, authHeader: string): 
 
   phaseOutput.push(`[${phase}] Running ${scanTypes.length} scans in parallel against ${target}...`);
 
-  // Run all scans in parallel for speed
-  const scanPromises = scanTypes.map(scanType => 
+  // Run all primary scans in parallel
+  const scanPromises = scanTypes.map(scanType =>
     callSecurityScan(scanType, target, authHeader).then(result => ({ scanType, result }))
   );
-
   const results = await Promise.all(scanPromises);
-  const findings: Finding[] = [];
+
+  const confirmedFindings: Finding[] = [];
+  const pendingVerification: Array<{ finding: Finding; verifyWith: string }> = [];
 
   for (const { scanType, result } of results) {
     if (result.success !== false) {
       const scanFindings = extractFindings(result, scanType, phase, target);
-      findings.push(...scanFindings);
-      phaseOutput.push(`[${phase}] ${scanType}: ${scanFindings.length} findings`);
+      phaseOutput.push(`[${phase}] ${scanType}: ${scanFindings.length} raw findings`);
+
+      for (const finding of scanFindings) {
+        const verifyType = VERIFICATION_MAP[scanType];
+        // Low-severity findings (info/low) skip verification to save time
+        if (!verifyType || finding.severity === 'info' || finding.severity === 'low') {
+          finding.confidence = finding.severity === 'info' ? 0.5 : 0.65;
+          confirmedFindings.push(finding);
+        } else {
+          pendingVerification.push({ finding, verifyWith: verifyType });
+        }
+      }
     } else {
       phaseOutput.push(`[${phase}] ${scanType}: ${result.error || 'no results'}`);
     }
   }
 
+  // Dual-verification: run verification scans in parallel for all pending findings
+  if (pendingVerification.length > 0) {
+    phaseOutput.push(`[${phase}] Verifying ${pendingVerification.length} findings with secondary techniques...`);
+    const verifyTypes = [...new Set(pendingVerification.map(p => p.verifyWith))];
+
+    // Run each unique verification scan once (deduplicated)
+    const verifyResultMap: Record<string, any> = {};
+    await Promise.all(
+      verifyTypes.map(async vt => {
+        const vr = await callSecurityScan(vt, target, authHeader);
+        verifyResultMap[vt] = vr;
+      })
+    );
+
+    for (const { finding, verifyWith } of pendingVerification) {
+      const verifyResult = verifyResultMap[verifyWith];
+      const verifyFindings = verifyResult?.success !== false
+        ? extractFindings(verifyResult, verifyWith, phase, target)
+        : [];
+
+      // Confirm if secondary scan also found a similar vulnerability type
+      const secondaryConfirms = verifyFindings.some(vf =>
+        vf.type === finding.type ||
+        vf.title.toLowerCase().includes(finding.type.toLowerCase().split(' ')[0]) ||
+        vf.severity === 'critical' || vf.severity === 'high'
+      );
+
+      if (secondaryConfirms) {
+        finding.confidence = 0.90;
+        finding.verified = true;
+        phaseOutput.push(`[CONFIRMED] ${finding.title} — verified by ${verifyWith} (confidence: 90%)`);
+        confirmedFindings.push(finding);
+      } else {
+        // Downgrade but keep with lower confidence; never silently drop
+        finding.confidence = 0.45;
+        finding.verified = false;
+        finding.severity = downgradeOneSeverity(finding.severity);
+        phaseOutput.push(`[UNVERIFIED] ${finding.title} — downgraded (${verifyWith} did not confirm)`);
+        if (finding.confidence >= 0.4 && finding.severity !== 'info') {
+          confirmedFindings.push(finding); // keep but marked as unverified
+        }
+      }
+    }
+  }
+
   return {
-    findings,
+    findings: confirmedFindings,
     output: phaseOutput,
     execution_time: Date.now() - startTime,
-    scans_completed: scanTypes.length
+    scans_completed: scanTypes.length,
+    verified_count: confirmedFindings.filter((f: any) => f.verified).length,
+    unverified_count: confirmedFindings.filter((f: any) => f.verified === false).length,
   };
+}
+
+function downgradeOneSeverity(sev: string): Finding['severity'] {
+  if (sev === 'critical') return 'high';
+  if (sev === 'high') return 'medium';
+  if (sev === 'medium') return 'low';
+  return 'info';
 }
 
 function extractFindings(scanResult: any, scanType: string, phase: string, target: string): Finding[] {
@@ -444,6 +525,41 @@ function mapSeverity(sev: string): Finding['severity'] {
   return 'info';
 }
 
+// ===== Subdomain Enumeration =====
+
+async function enumerateSubdomains(target: string, authHeader: string): Promise<string[]> {
+  try {
+    const cleanTarget = target.replace(/^https?:\/\//, '').split('/')[0];
+    const result = await callSecurityScan('subdomain', cleanTarget, authHeader);
+    const subdomains: string[] = [];
+
+    // Extract subdomain findings
+    const vulnArray = result.findings || result.vulnerabilities || [];
+    for (const f of vulnArray) {
+      const name = (f.name || f.title || '').replace(/^Subdomain:\s*/i, '').trim();
+      if (name && name.includes('.')) subdomains.push(name);
+    }
+
+    // Also parse raw output
+    if (result.output && typeof result.output === 'string') {
+      const lines = result.output.split('\n');
+      for (const line of lines) {
+        if (line.includes('[+]')) {
+          const match = line.match(/\[+\]\s+([a-z0-9\-\.]+\.[a-z]{2,})/i);
+          if (match && match[1] && !subdomains.includes(match[1])) {
+            subdomains.push(match[1]);
+          }
+        }
+      }
+    }
+
+    return [...new Set(subdomains)].filter(s => s !== cleanTarget);
+  } catch (e) {
+    console.warn('[Subdomain Enum] Error:', e);
+    return [];
+  }
+}
+
 // ===== Continuous Operation =====
 
 async function executeContinuousOperation(
@@ -454,7 +570,7 @@ async function executeContinuousOperation(
   const learningUpdates: any[] = [];
   const phaseOutputs: Record<string, string[]> = {};
 
-  // Run recon + scanning in parallel (they're independent)
+  // Phase 1: Recon on primary target
   console.log(`[Red Team] Running recon + scanning in parallel | Target: ${state.target}`);
   const [reconResult, scanningResult] = await Promise.all([
     executePhase('recon', state.target, authHeader),
@@ -465,7 +581,48 @@ async function executeContinuousOperation(
   phaseOutputs['recon'] = reconResult.output;
   phaseOutputs['scanning'] = scanningResult.output;
 
-  // Run exploitation + post-exploit in parallel
+  // Phase 2: Subdomain Enumeration (expanded attack surface)
+  console.log(`[Red Team] Enumerating subdomains for expanded attack surface...`);
+  const subdomains = await enumerateSubdomains(state.target, authHeader);
+  const subdomainOutput: string[] = [`[subdomain-scan] Found ${subdomains.length} subdomains: ${subdomains.join(', ')}`];
+
+  if (subdomains.length > 0) {
+    // Run exploitation scans against each subdomain in parallel (capped at first 5 to avoid timeout)
+    const subdomainTargets = subdomains.slice(0, 5);
+    const SUBDOMAIN_SCAN_TYPES = ['sqli', 'xss', 'cors-advanced', 'dir-traversal', 'cookies'];
+
+    const subdomainPromises = subdomainTargets.flatMap(sub =>
+      SUBDOMAIN_SCAN_TYPES.map(scanType =>
+        callSecurityScan(scanType, sub, authHeader)
+          .then(result => ({ sub, scanType, result }))
+      )
+    );
+
+    const subdomainResults = await Promise.all(subdomainPromises);
+
+    for (const { sub, scanType, result } of subdomainResults) {
+      if (result.success !== false) {
+        const subFindings = extractFindings(result, scanType, 'subdomain-scan', sub);
+        // Tag findings with their subdomain origin
+        subFindings.forEach(f => {
+          f.subdomain = sub;
+          f.title = `[${sub}] ${f.title}`;
+          f.confidence = f.confidence || 0.7;
+        });
+        allFindings.push(...subFindings);
+        if (subFindings.length > 0) {
+          subdomainOutput.push(`[subdomain] ${sub} → ${scanType}: ${subFindings.length} findings`);
+        }
+      }
+    }
+    subdomainOutput.push(`[subdomain-scan] Subdomain attack surface scan complete. Total from subdomains: ${allFindings.filter(f => f.subdomain).length}`);
+  } else {
+    subdomainOutput.push('[subdomain-scan] No live subdomains found — focusing on primary target');
+  }
+
+  phaseOutputs['subdomain-scan'] = subdomainOutput;
+
+  // Phase 3: Exploitation + post-exploit on primary target (with new scan types)
   console.log(`[Red Team] Running exploitation + post-exploit in parallel | Findings so far: ${allFindings.length}`);
   const [exploitResult, postExploitResult] = await Promise.all([
     executePhase('exploitation', state.target, authHeader),
@@ -476,22 +633,22 @@ async function executeContinuousOperation(
   phaseOutputs['exploitation'] = exploitResult.output;
   phaseOutputs['post-exploit'] = postExploitResult.output;
 
-  // Run correlation locally (no AI call needed)
+  // Correlation
   if (allFindings.length >= 2) {
     const correlations = await correlateFindings(allFindings, { target: state.target });
     allCorrelations.push(...correlations);
   }
 
-  // Generate attack chains locally
   const attackChains = await generateAttackChains(allCorrelations, { target: state.target });
 
-  // Generate lightweight learning updates (no AI calls)
-  for (const phase of ['recon', 'scanning', 'exploitation', 'post-exploit']) {
-    const phaseFindings = allFindings.filter(f => f.phase === phase);
+  for (const phase of ['recon', 'scanning', 'subdomain-scan', 'exploitation', 'post-exploit']) {
+    const phaseFindings = allFindings.filter(f => f.phase === phase || (phase === 'subdomain-scan' && f.subdomain));
+    const verifiedCount = phaseFindings.filter((f: any) => f.verified).length;
     learningUpdates.push({
       phase,
       success: phaseFindings.length > 0,
       findings_count: phaseFindings.length,
+      verified_count: verifiedCount,
       confidence: 0.5 + (phaseFindings.length > 0 ? 0.1 : 0),
       adaptation_strategy: phaseFindings.length === 0 ? 'expand_scan_scope' : 'deepen_analysis'
     });
@@ -503,8 +660,9 @@ async function executeContinuousOperation(
     attack_chains: attackChains,
     learning_updates: learningUpdates,
     phase_outputs: phaseOutputs,
-    iterations_completed: 4,
-    total_scans: Object.values(PHASE_SCAN_TYPES).flat().length
+    subdomains_discovered: subdomains,
+    iterations_completed: 5,
+    total_scans: Object.values(PHASE_SCAN_TYPES).flat().length + (subdomains.length * 5)
   };
 }
 
