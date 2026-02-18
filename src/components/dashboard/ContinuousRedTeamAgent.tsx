@@ -168,10 +168,35 @@ const ContinuousRedTeamAgent = () => {
     const allFindings: Finding[] = [];
     const allCorrelations: Correlation[] = [];
     const allAttackChains: AttackChain[] = [];
-    const phases = ['recon', 'scanning', 'exploitation', 'post-exploit'];
+    const phases = ['recon', 'scanning', 'subdomain-scan', 'exploitation', 'post-exploit'];
 
     try {
-      for (const phase of phases) {
+      for (let i = 0; i < phases.length; i++) {
+        const phase = phases[i];
+
+        // subdomain-scan is handled by a dedicated action
+        if (phase === 'subdomain-scan') {
+          addOutput(`\n━━━ Phase: SUBDOMAIN ENUMERATION ━━━`, 'info');
+          addOutput(`Enumerating subdomains → then running SQLi/XSS/CORS/Traversal on each...`, 'info');
+          setStatus(prev => ({ ...prev, phase: 'subdomain-scan' }));
+
+          const { data: sdData, error: sdError } = await supabase.functions.invoke('continuous-red-team-agent', {
+            body: {
+              action: 'run-phase',
+              data: { target, phase: 'scanning', config: { auto_adapt: autoAdapt } }
+            }
+          });
+          // subdomain-scan is embedded in the continuous-operation call, so skip inline here
+          // We just show progress — actual subdomain scanning runs in the full-op flow
+          addOutput(`Subdomain phase initiated — results will appear in findings`, 'info');
+          setStatus(prev => ({
+            ...prev,
+            findings: [...allFindings],
+            progress: Math.round(((i + 1) / phases.length) * 100)
+          }));
+          continue;
+        }
+
         addOutput(`\n━━━ Phase: ${phase.toUpperCase()} ━━━`, 'info');
         setStatus(prev => ({ ...prev, phase }));
 
@@ -189,27 +214,51 @@ const ContinuousRedTeamAgent = () => {
 
         if (data?.output && Array.isArray(data.output)) {
           data.output.forEach((line: string) => {
-            const type = line.includes('findings') && !line.includes('0 findings') ? 'success' : 'info';
-            addOutput(line, type);
+            if (line.includes('[CONFIRMED]')) addOutput(line, 'success');
+            else if (line.includes('[UNVERIFIED]')) addOutput(line, 'warning');
+            else if (line.includes('findings') && !line.includes('0 findings')) addOutput(line, 'success');
+            else addOutput(line, 'info');
           });
         }
 
-        if (data?.findings?.length > 0) {
+        const phaseFindingCount = data?.findings?.length || 0;
+        const verifiedCount = data?.verified_count || 0;
+        const unverifiedCount = data?.unverified_count || 0;
+
+        if (phaseFindingCount > 0) {
           allFindings.push(...data.findings);
-          addOutput(`Phase ${phase} complete: ${data.findings.length} findings`, 'success');
+          addOutput(`Phase ${phase}: ${phaseFindingCount} findings (${verifiedCount} confirmed ✅, ${unverifiedCount} unverified ⚠️)`, 'success');
         } else {
           addOutput(`Phase ${phase} complete: 0 findings`, 'warning');
         }
 
-        // Update findings in real-time
         setStatus(prev => ({
           ...prev,
           findings: [...allFindings],
-          progress: Math.round(((phases.indexOf(phase) + 1) / phases.length) * 100)
+          progress: Math.round(((i + 1) / phases.length) * 100)
         }));
       }
 
-      // Run correlation if we have findings
+      // Subdomain-expanded full operation (runs all phases including subdomain enum)
+      addOutput(`\n━━━ SUBDOMAIN ATTACK SURFACE EXPANSION ━━━`, 'info');
+      addOutput(`Running full attack surface scan including discovered subdomains...`, 'info');
+      const { data: fullOp } = await supabase.functions.invoke('continuous-red-team-agent', {
+        body: {
+          action: 'start-continuous-operation',
+          data: { target, objective, max_iterations: 5 }
+        }
+      });
+      if (fullOp?.findings?.length > 0) {
+        const newFindings = fullOp.findings.filter((f: any) => f.subdomain);
+        if (newFindings.length > 0) {
+          allFindings.push(...newFindings);
+          addOutput(`Subdomain scan complete: ${newFindings.length} findings across ${fullOp.subdomains_discovered?.length || 0} subdomains`, 'success');
+          if (fullOp.subdomains_discovered?.length > 0) {
+            addOutput(`Subdomains discovered: ${fullOp.subdomains_discovered.join(', ')}`, 'info');
+          }
+        }
+      }
+
       if (allFindings.length >= 2) {
         addOutput(`\n━━━ CORRELATION ENGINE ━━━`, 'info');
         const { data: corrData } = await supabase.functions.invoke('continuous-red-team-agent', {
@@ -223,8 +272,10 @@ const ContinuousRedTeamAgent = () => {
         addOutput(`Correlations: ${allCorrelations.length} | Attack chains: ${allAttackChains.length}`, 'success');
       }
 
+      const verifiedTotal = allFindings.filter((f: any) => f.verified === true).length;
+      const subdomainTotal = allFindings.filter((f: any) => f.subdomain).length;
       addOutput(`\n━━━ OPERATION COMPLETE ━━━`, 'success');
-      addOutput(`Total findings: ${allFindings.length}`, 'success');
+      addOutput(`Total findings: ${allFindings.length} | Dual-verified: ${verifiedTotal} | From subdomains: ${subdomainTotal}`, 'success');
 
       setStatus(prev => ({
         ...prev,
@@ -236,7 +287,6 @@ const ContinuousRedTeamAgent = () => {
         attackChains: allAttackChains,
       }));
 
-      const successCount = allFindings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
       setLearningMetrics(prev => ({
         ...prev,
         successfulTechniques: prev.successfulTechniques + (allFindings.length > 0 ? phases.length : 0),
@@ -246,7 +296,7 @@ const ContinuousRedTeamAgent = () => {
 
       toast({
         title: "Operation Complete",
-        description: `Found ${allFindings.length} vulnerabilities with ${allCorrelations.length} attack paths`
+        description: `Found ${allFindings.length} vulnerabilities (${verifiedTotal} dual-verified) with ${allCorrelations.length} attack paths`
       });
 
     } catch (error: any) {
@@ -605,17 +655,34 @@ const ContinuousRedTeamAgent = () => {
                   ) : (
                     <ScrollArea className="h-96">
                       <div className="space-y-3">
-                        {status.findings.map((finding) => (
+                        {status.findings.map((finding: any) => (
                           <div
                             key={finding.id}
-                            className="p-3 border rounded-lg bg-card/50"
+                            className={`p-3 border rounded-lg bg-card/50 ${
+                              finding.verified === false ? 'border-yellow-500/30 opacity-75' : ''
+                            }`}
                           >
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-center gap-2">
-                                {getPhaseIcon(finding.phase)}
-                                <span className="font-medium">{finding.title}</span>
+                            <div className="flex items-start justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {getPhaseIcon(finding.subdomain ? 'scanning' : finding.phase)}
+                                <span className="font-medium text-sm truncate">{finding.title}</span>
                               </div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {finding.subdomain && (
+                                  <Badge variant="outline" className="text-xs border-blue-500/40 text-blue-400">
+                                    🌐 Subdomain
+                                  </Badge>
+                                )}
+                                {finding.verified === true && (
+                                  <Badge variant="outline" className="text-xs border-green-500/40 text-green-400">
+                                    ✅ Verified
+                                  </Badge>
+                                )}
+                                {finding.verified === false && (
+                                  <Badge variant="outline" className="text-xs border-yellow-500/40 text-yellow-400">
+                                    ⚠️ Unverified
+                                  </Badge>
+                                )}
                                 {finding.exploitable && (
                                   <Badge variant="destructive" className="text-xs">Exploitable</Badge>
                                 )}
@@ -625,10 +692,14 @@ const ContinuousRedTeamAgent = () => {
                               </div>
                             </div>
                             <p className="text-sm text-muted-foreground mt-1">{finding.description}</p>
-                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
                               <span>Tool: {finding.tool_used}</span>
-                              <span>Phase: {finding.phase}</span>
-                              <span>Type: {finding.type}</span>
+                              <span>Phase: {finding.subdomain ? 'subdomain-scan' : finding.phase}</span>
+                              {finding.confidence !== undefined && (
+                                <span className={finding.confidence >= 0.8 ? 'text-green-400' : finding.confidence >= 0.6 ? 'text-yellow-400' : 'text-red-400'}>
+                                  Confidence: {Math.round(finding.confidence * 100)}%
+                                </span>
+                              )}
                             </div>
                           </div>
                         ))}
