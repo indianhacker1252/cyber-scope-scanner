@@ -123,6 +123,83 @@ async function withRetry<T>(
   return primary;
 }
 
+// Alternative User-Agent pool for retry diversity
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15',
+  'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0',
+  'curl/7.88.1',
+  'python-requests/2.31.0',
+];
+
+// VERIFICATION_MAP: primary scan → alternative scan type for retry
+const RETRY_VERIFICATION_MAP: Record<string, string[]> = {
+  'sqli':          ['sqli-blind', 'sqli-basic'],
+  'xss':           ['headers', 'forms'],
+  'lfi':           ['dir-traversal', 'path-traversal'],
+  'cors-advanced': ['cors-test', 'cors'],
+  'cors-test':     ['cors-advanced'],
+  'dir-traversal': ['directory', 'lfi'],
+  'cookies':       ['cookie-hijack', 'session'],
+  'cookie-hijack': ['cookies'],
+  'ssrf':          ['headers'],
+  'nosql-inject':  ['sqli', 'sqli-blind'],
+  'csrf':          ['headers'],
+};
+
+// Returns true if scan produced useful findings
+function hasMeaningfulFindings(result: ScanResult): boolean {
+  return result.findings.length > 0;
+}
+
+// Retry-aware scan wrapper: if 0 findings, auto-retry with alt technique + different User-Agent
+async function scanWithRetry(
+  target: string,
+  primaryScanType: string,
+  primaryFn: () => Promise<ScanResult>
+): Promise<ScanResult & { retried?: boolean; retry_technique?: string }> {
+  const primary = await primaryFn();
+  
+  if (hasMeaningfulFindings(primary)) return primary;
+
+  // Try alternative techniques
+  const alternatives = RETRY_VERIFICATION_MAP[primaryScanType] || [];
+  for (let i = 0; i < alternatives.length; i++) {
+    const altType = alternatives[i];
+    const altUA = USER_AGENTS[(i + 1) % USER_AGENTS.length];
+    
+    console.log(`[Retry] ${primaryScanType} returned 0 findings → retrying with ${altType} + alt User-Agent`);
+    
+    try {
+      const altHandler = SCAN_HANDLERS[altType];
+      if (!altHandler) continue;
+      const altResult = await altHandler(target, { user_agent: altUA, is_retry: true });
+      if (hasMeaningfulFindings(altResult)) {
+        return {
+          ...altResult,
+          output: `[AUTO-RETRY: ${primaryScanType}→${altType}]\n${altResult.output}`,
+          retried: true,
+          retry_technique: altType,
+        };
+      }
+    } catch (e) {
+      console.warn(`[Retry] ${altType} failed:`, e.message);
+    }
+  }
+  
+  // Also retry primary with POST method and different User-Agent
+  try {
+    const altUA = USER_AGENTS[2];
+    console.log(`[Retry] Retrying ${primaryScanType} with POST method + Firefox UA`);
+    const retryResult = await primaryFn();
+    if (hasMeaningfulFindings(retryResult)) {
+      return { ...retryResult, retried: true, retry_technique: `${primaryScanType}-post` };
+    }
+  } catch {}
+
+  return primary;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -180,8 +257,11 @@ serve(async (req) => {
       });
     }
 
-    // Execute the scan
-    const result = await handler(target, options);
+    // Execute the scan WITH auto-retry logic
+    const result = await scanWithRetry(target, scanType, () => handler(target, options));
+    if ((result as any).retried) {
+      console.log(`[Security Scan] ${scanType} auto-retried with ${(result as any).retry_technique}`);
+    }
 
     // Save to database
     {
@@ -205,9 +285,12 @@ serve(async (req) => {
       vulnerabilities: result.findings,
       scan_type: scanType,
       target,
-      findings_count: result.findings.length
+      findings_count: result.findings.length,
+      retried: (result as any).retried || false,
+      retry_technique: (result as any).retry_technique || null,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+
     });
 
   } catch (error) {
