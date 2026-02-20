@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.continuous-red-team-agent]
 verify_jwt = false
+
+[functions.ai-scan-orchestrator]
+verify_jwt = false
