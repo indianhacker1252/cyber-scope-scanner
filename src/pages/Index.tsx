@@ -33,6 +33,7 @@ import SecurityTestingHub from "@/components/dashboard/SecurityTestingHub";
 import VulnerabilityEngine from "@/components/dashboard/VulnerabilityEngine";
 import ApexSentinel from "@/components/dashboard/ApexSentinel";
 import ContinuousRedTeamAgent from "@/components/dashboard/ContinuousRedTeamAgent";
+import MutationMatrix from "@/components/dashboard/MutationMatrix";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -53,6 +54,8 @@ const Index = () => {
         return <ApexSentinel />;
       case "continuous-red-team":
         return <ContinuousRedTeamAgent />;
+      case "mutation-matrix":
+        return <MutationMatrix />;
       case "threat-intel":
         return <ThreatIntelligence />;
       case "security-advisor":

@@ -277,6 +277,69 @@ export type Database = {
         }
         Relationships: []
       }
+      mutation_attempts: {
+        Row: {
+          ai_prompt: string | null
+          ai_response: string | null
+          attempt_number: number
+          chain_id: string | null
+          created_at: string
+          error_reason: string | null
+          http_status: number | null
+          id: string
+          max_retries: number
+          mutated_payload: string | null
+          mutation_strategy: string | null
+          original_payload: string
+          parameter: string
+          response_body: string | null
+          status: string
+          target: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_prompt?: string | null
+          ai_response?: string | null
+          attempt_number?: number
+          chain_id?: string | null
+          created_at?: string
+          error_reason?: string | null
+          http_status?: number | null
+          id?: string
+          max_retries?: number
+          mutated_payload?: string | null
+          mutation_strategy?: string | null
+          original_payload: string
+          parameter: string
+          response_body?: string | null
+          status?: string
+          target: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_prompt?: string | null
+          ai_response?: string | null
+          attempt_number?: number
+          chain_id?: string | null
+          created_at?: string
+          error_reason?: string | null
+          http_status?: number | null
+          id?: string
+          max_retries?: number
+          mutated_payload?: string | null
+          mutation_strategy?: string | null
+          original_payload?: string
+          parameter?: string
+          response_body?: string | null
+          status?: string
+          target?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
