@@ -41,3 +41,9 @@ verify_jwt = false
 
 [functions.ai-scan-orchestrator]
 verify_jwt = false
+
+[functions.mutation-engine]
+verify_jwt = false
+
+[functions.attack-execution-loop]
+verify_jwt = false
