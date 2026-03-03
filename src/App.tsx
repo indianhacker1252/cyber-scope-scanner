@@ -16,16 +16,46 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
 
   useEffect(() => {
+    let resolved = false;
+
+    // Timeout fallback — if getSession hangs (stale token, network failure), force redirect to login
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        setAuthenticated(false);
+        setLoading(false);
+      }
+    }, 5000);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuthenticated(!!session);
-      setLoading(false);
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        setAuthenticated(!!session);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        setAuthenticated(false);
+        setLoading(false);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthenticated(!!session);
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        setLoading(false);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-background text-foreground">Loading...</div>;
