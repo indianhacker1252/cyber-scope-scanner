@@ -92,6 +92,101 @@ export type Database = {
         }
         Relationships: []
       }
+      apex_mutation_log: {
+        Row: {
+          created_at: string
+          id: string
+          mutated_payload: string | null
+          mutation_type: string
+          original_payload: string | null
+          reason: string | null
+          session_id: string
+          success: boolean | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mutated_payload?: string | null
+          mutation_type: string
+          original_payload?: string | null
+          reason?: string | null
+          session_id: string
+          success?: boolean | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mutated_payload?: string | null
+          mutation_type?: string
+          original_payload?: string | null
+          reason?: string | null
+          session_id?: string
+          success?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apex_mutation_log_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "apex_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      apex_sessions: {
+        Row: {
+          attack_chain: Json | null
+          authorized: boolean | null
+          constraints: Json | null
+          created_at: string
+          current_phase: string | null
+          findings: Json | null
+          id: string
+          scope_config: Json | null
+          session_name: string
+          status: string | null
+          target: string
+          target_map: Json | null
+          target_type: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attack_chain?: Json | null
+          authorized?: boolean | null
+          constraints?: Json | null
+          created_at?: string
+          current_phase?: string | null
+          findings?: Json | null
+          id?: string
+          scope_config?: Json | null
+          session_name: string
+          status?: string | null
+          target: string
+          target_map?: Json | null
+          target_type?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attack_chain?: Json | null
+          authorized?: boolean | null
+          constraints?: Json | null
+          created_at?: string
+          current_phase?: string | null
+          findings?: Json | null
+          id?: string
+          scope_config?: Json | null
+          session_name?: string
+          status?: string | null
+          target?: string
+          target_map?: Json | null
+          target_type?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       apex_successful_chains: {
         Row: {
           attack_chain: Json
@@ -133,6 +228,137 @@ export type Database = {
           vulnerability_type?: string | null
         }
         Relationships: []
+      }
+      apex_tasks: {
+        Row: {
+          created_at: string
+          description: string | null
+          executed_at: string | null
+          id: string
+          mitre_technique: string | null
+          parent_task_id: string | null
+          priority: number | null
+          reasoning: string | null
+          result_analysis: Json | null
+          session_id: string
+          status: string | null
+          stderr: string | null
+          stdout: string | null
+          success_probability: number | null
+          task_name: string
+          task_type: string
+          tool_selected: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          executed_at?: string | null
+          id?: string
+          mitre_technique?: string | null
+          parent_task_id?: string | null
+          priority?: number | null
+          reasoning?: string | null
+          result_analysis?: Json | null
+          session_id: string
+          status?: string | null
+          stderr?: string | null
+          stdout?: string | null
+          success_probability?: number | null
+          task_name: string
+          task_type?: string
+          tool_selected?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          executed_at?: string | null
+          id?: string
+          mitre_technique?: string | null
+          parent_task_id?: string | null
+          priority?: number | null
+          reasoning?: string | null
+          result_analysis?: Json | null
+          session_id?: string
+          status?: string | null
+          stderr?: string | null
+          stdout?: string | null
+          success_probability?: number | null
+          task_name?: string
+          task_type?: string
+          tool_selected?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apex_tasks_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "apex_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      apex_tool_executions: {
+        Row: {
+          command_executed: string | null
+          created_at: string
+          execution_time_ms: number | null
+          exit_code: number | null
+          id: string
+          parsed_results: Json | null
+          session_id: string
+          stderr: string | null
+          stdout: string | null
+          success: boolean | null
+          task_id: string
+          tool_name: string
+        }
+        Insert: {
+          command_executed?: string | null
+          created_at?: string
+          execution_time_ms?: number | null
+          exit_code?: number | null
+          id?: string
+          parsed_results?: Json | null
+          session_id: string
+          stderr?: string | null
+          stdout?: string | null
+          success?: boolean | null
+          task_id: string
+          tool_name: string
+        }
+        Update: {
+          command_executed?: string | null
+          created_at?: string
+          execution_time_ms?: number | null
+          exit_code?: number | null
+          id?: string
+          parsed_results?: Json | null
+          session_id?: string
+          stderr?: string | null
+          stdout?: string | null
+          success?: boolean | null
+          task_id?: string
+          tool_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apex_tool_executions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "apex_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apex_tool_executions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "apex_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       attack_attempts: {
         Row: {
