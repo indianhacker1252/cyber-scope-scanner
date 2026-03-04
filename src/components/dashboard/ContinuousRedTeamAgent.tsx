@@ -42,6 +42,13 @@ interface SubdomainEntry {
 interface Correlation { id: string; findings: string[]; attack_path: string; risk_amplification: number; exploitation_probability: number; description: string; }
 interface AttackChain { id: string; name: string; steps: any[]; success_probability: number; impact: string; mitre_mapping: string[]; }
 
+interface MutationAttempt {
+  id: string; target: string; parameter: string; original_payload: string;
+  mutated_payload: string | null; attempt_number: number; max_retries: number;
+  http_status: number | null; error_reason: string | null; mutation_strategy: string | null;
+  status: string; chain_id: string | null; created_at: string;
+}
+
 interface AgentStatus {
   isRunning: boolean; phase: string; progress: number; iteration: number; maxIterations: number;
   findings: Finding[]; correlations: Correlation[]; attackChains: AttackChain[]; learningUpdates: any[];
