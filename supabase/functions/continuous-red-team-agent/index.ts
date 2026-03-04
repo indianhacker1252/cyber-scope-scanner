@@ -850,6 +850,32 @@ async function executeContinuousOperation(
   phaseOutputs['exploitation'] = exploitResult.output;
   phaseOutputs['post-exploit'] = postExploitResult.output;
 
+  // Phase 4: Mutation Validation — confirm high/critical findings with payload mutation engine
+  console.log(`[Red Team] Running mutation validation on ${allFindings.length} findings...`);
+  // Detect tech stack from findings
+  const techFromFindings = allFindings
+    .filter(f => f.type?.toLowerCase().includes('technology') || f.tool_used === 'tech')
+    .map(f => f.title.replace(/Technology:\s*/i, '').trim())
+    .filter(Boolean);
+  const techStack = [...new Set(techFromFindings)];
+
+  const mutationValidation = await validateFindingsWithMutation(
+    allFindings, state.target, techStack, authHeader
+  );
+  // Replace allFindings with validated + deduplicated set
+  allFindings.length = 0;
+  allFindings.push(...mutationValidation.validated);
+  phaseOutputs['mutation-validation'] = mutationValidation.output;
+
+  // Global deduplication pass
+  const dedupedFindings = deduplicateFindings(allFindings);
+  const globalDedupRemoved = allFindings.length - dedupedFindings.length;
+  if (globalDedupRemoved > 0) {
+    phaseOutputs['dedup'] = [`[DEDUP] Global pass removed ${globalDedupRemoved} duplicate findings`];
+  }
+  allFindings.length = 0;
+  allFindings.push(...dedupedFindings);
+
   // Correlation
   if (allFindings.length >= 2) {
     const correlations = await correlateFindings(allFindings, { target: state.target });
