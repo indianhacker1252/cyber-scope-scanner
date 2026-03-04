@@ -619,10 +619,11 @@ const ContinuousRedTeamAgent = () => {
         {/* Main Panel */}
         <div className="lg:col-span-2">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid grid-cols-9 w-full text-xs">
+            <TabsList className="grid grid-cols-10 w-full text-xs">
               <TabsTrigger value="control">Control</TabsTrigger>
               <TabsTrigger value="ai-chat"><MessageSquare className="h-3 w-3 mr-0.5" />AI Chat</TabsTrigger>
               <TabsTrigger value="findings">Findings{status.findings.length > 0 && <Badge className="ml-1 text-xs h-4 px-1">{status.findings.length}</Badge>}</TabsTrigger>
+              <TabsTrigger value="mutation"><Zap className="h-3 w-3 mr-0.5" />Mutation{mutationAttempts.length > 0 && <Badge className="ml-1 text-xs h-4 px-1">{mutationAttempts.length}</Badge>}</TabsTrigger>
               <TabsTrigger value="tree"><TreePine className="h-3 w-3 mr-0.5" />Tree</TabsTrigger>
               <TabsTrigger value="surface"><Globe className="h-3 w-3 mr-0.5" />Surface</TabsTrigger>
               <TabsTrigger value="specialized"><Filter className="h-3 w-3 mr-0.5" />CORS/Trav</TabsTrigger>
