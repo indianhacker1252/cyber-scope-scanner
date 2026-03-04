@@ -175,6 +175,44 @@ const ContinuousRedTeamAgent = () => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [aiThoughts]);
 
+  // Fetch mutation attempts
+  const fetchMutationAttempts = useCallback(async () => {
+    const { data } = await supabase.from('mutation_attempts').select('*')
+      .order('created_at', { ascending: false }).limit(100);
+    if (data) setMutationAttempts(data as MutationAttempt[]);
+  }, []);
+
+  useEffect(() => { fetchMutationAttempts(); }, [fetchMutationAttempts]);
+
+  // Realtime subscription for mutation_attempts
+  useEffect(() => {
+    const channel = supabase
+      .channel('redteam_mutation_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mutation_attempts' }, (payload: any) => {
+        const record = payload.new as MutationAttempt;
+        const eventType = payload.eventType;
+        let msg = '';
+        if (eventType === 'INSERT' && record.status === 'firing') {
+          msg = `🎯 FIRING payload at ${record.parameter} → attempt #${record.attempt_number}`;
+        } else if (eventType === 'UPDATE') {
+          switch (record.status) {
+            case 'blocked': msg = `🛡️ BLOCKED (HTTP ${record.http_status}) → ${record.parameter}`; break;
+            case 'mutating': msg = `🧬 MUTATING → AI generating evasion payload...`; break;
+            case 'success': msg = `✅ BYPASS SUCCESS → ${record.parameter} (${record.mutation_strategy || 'original'})`; break;
+            case 'defended': msg = `🔒 DEFENDED → max retries on ${record.parameter}`; break;
+            case 'error': msg = `⚠️ ERROR → ${record.error_reason}`; break;
+          }
+        }
+        if (msg) {
+          setMutationEvents(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50));
+          addOutput(msg, record.status === 'success' ? 'success' : record.status === 'blocked' ? 'warning' : 'info');
+        }
+        fetchMutationAttempts();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchMutationAttempts, addOutput]);
+
   const addOutput = useCallback((message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     const prefix = { info: '📡', success: '✅', warning: '⚠️', error: '❌' }[type];
