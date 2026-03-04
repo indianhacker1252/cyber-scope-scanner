@@ -796,6 +796,100 @@ const ContinuousRedTeamAgent = () => {
               </Card>
             </TabsContent>
 
+            {/* === MUTATION MATRIX TAB (Integrated) === */}
+            <TabsContent value="mutation" className="space-y-4">
+              {/* Mutation Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'Total Attempts', value: mutationAttempts.length, icon: Target, color: 'text-blue-400' },
+                  { label: 'Bypasses', value: mutationAttempts.filter(a => a.status === 'success').length, icon: Unlock, color: 'text-green-400' },
+                  { label: 'WAF Blocks', value: mutationAttempts.filter(a => a.status === 'blocked').length, icon: Shield, color: 'text-destructive' },
+                  { label: 'Defended', value: mutationAttempts.filter(a => a.status === 'defended').length, icon: Lock, color: 'text-muted-foreground' },
+                ].map((stat, idx) => (
+                  <Card key={idx}>
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div><p className="text-xl font-bold">{stat.value}</p><p className="text-xs text-muted-foreground">{stat.label}</p></div>
+                      <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Mutation Chains */}
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm flex items-center gap-2"><Cpu className="h-4 w-4 text-primary" />Mutation Chain Timeline</CardTitle>
+                  <CardDescription className="text-xs">Payload → Block → AI Mutation → Retry (auto-triggered by Red Team findings)</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[300px]">
+                    {mutationAttempts.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Zap className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">Mutation engine activates automatically when WAF blocks are detected during scans.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {mutationAttempts.slice(0, 30).map((attempt) => {
+                          const statusColor = attempt.status === 'success' ? 'text-green-400' :
+                            attempt.status === 'blocked' ? 'text-destructive' :
+                            attempt.status === 'mutating' ? 'text-purple-400' :
+                            attempt.status === 'defended' ? 'text-blue-400' :
+                            attempt.status === 'firing' ? 'text-yellow-400' : 'text-muted-foreground';
+                          const StatusIcon = attempt.status === 'success' ? CheckCircle2 :
+                            attempt.status === 'blocked' ? Shield :
+                            attempt.status === 'mutating' ? Brain :
+                            attempt.status === 'defended' ? Lock :
+                            attempt.status === 'firing' ? Zap : Activity;
+                          return (
+                            <div key={attempt.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                              <StatusIcon className={`h-4 w-4 ${statusColor} flex-shrink-0 ${attempt.status === 'mutating' || attempt.status === 'firing' ? 'animate-pulse' : ''}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium truncate">{attempt.target} → {attempt.parameter}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  #{attempt.attempt_number}/{attempt.max_retries} • {attempt.mutation_strategy || 'original'} • {new Date(attempt.created_at).toLocaleTimeString()}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {attempt.http_status && <Badge variant="outline" className="text-xs">HTTP {attempt.http_status}</Badge>}
+                                <Badge variant={attempt.status === 'success' ? 'default' : attempt.status === 'defended' ? 'secondary' : 'destructive'} className="text-xs">
+                                  {attempt.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              {/* Live Mutation Events */}
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-primary animate-pulse" />Live Mutation Feed</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ScrollArea className="h-[200px]">
+                    <div className="p-3 font-mono text-xs space-y-1 bg-black/50 rounded-b-lg">
+                      {mutationEvents.length === 0 ? (
+                        <div className="text-muted-foreground text-center py-4">Waiting for mutation events...</div>
+                      ) : mutationEvents.map((event, idx) => (
+                        <div key={idx} className={`p-1.5 rounded ${
+                          event.includes('✅') ? 'text-green-400' :
+                          event.includes('🛡️') ? 'text-yellow-400' :
+                          event.includes('🧬') ? 'text-purple-400' :
+                          event.includes('🔒') ? 'text-blue-400' :
+                          'text-muted-foreground'
+                        }`}>{event}</div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             {/* === TARGET TREE TAB === */}
             <TabsContent value="tree">
               <Card>
