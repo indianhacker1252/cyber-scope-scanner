@@ -184,6 +184,16 @@ const ContinuousRedTeamAgent = () => {
 
   useEffect(() => { fetchMutationAttempts(); }, [fetchMutationAttempts]);
 
+  const addOutput = useCallback((message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    const prefix = { info: '📡', success: '✅', warning: '⚠️', error: '❌' }[type];
+    setLiveOutput(prev => [...prev, `[${timestamp}] ${prefix} ${message}`]);
+  }, []);
+
+  const addAIThought = useCallback((thought: string, actions?: string[], owasp?: string[]) => {
+    setAiThoughts(prev => [...prev, { thought, actions, owasp_coverage: owasp, timestamp: new Date().toLocaleTimeString() }]);
+  }, []);
+
   // Realtime subscription for mutation_attempts
   useEffect(() => {
     const channel = supabase
@@ -212,16 +222,6 @@ const ContinuousRedTeamAgent = () => {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [fetchMutationAttempts, addOutput]);
-
-  const addOutput = useCallback((message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
-    const timestamp = new Date().toLocaleTimeString();
-    const prefix = { info: '📡', success: '✅', warning: '⚠️', error: '❌' }[type];
-    setLiveOutput(prev => [...prev, `[${timestamp}] ${prefix} ${message}`]);
-  }, []);
-
-  const addAIThought = useCallback((thought: string, actions?: string[], owasp?: string[]) => {
-    setAiThoughts(prev => [...prev, { thought, actions, owasp_coverage: owasp, timestamp: new Date().toLocaleTimeString() }]);
-  }, []);
 
   // ===== CONNECTION CHECK =====
   const checkConnection = async () => {
