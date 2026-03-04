@@ -884,8 +884,10 @@ async function executeContinuousOperation(
 
   const attackChains = await generateAttackChains(allCorrelations, { target: state.target });
 
-  for (const phase of ['recon', 'scanning', 'subdomain-scan', 'exploitation', 'post-exploit']) {
-    const phaseFindings = allFindings.filter(f => f.phase === phase || (phase === 'subdomain-scan' && f.subdomain));
+  for (const phase of ['recon', 'scanning', 'subdomain-scan', 'exploitation', 'post-exploit', 'mutation-validation']) {
+    const phaseFindings = phase === 'mutation-validation'
+      ? allFindings.filter(f => f.verified === true && f.confidence && f.confidence >= 0.9)
+      : allFindings.filter(f => f.phase === phase || (phase === 'subdomain-scan' && f.subdomain));
     const verifiedCount = phaseFindings.filter((f: any) => f.verified).length;
     learningUpdates.push({
       phase,
@@ -903,6 +905,7 @@ async function executeContinuousOperation(
     attack_chains: attackChains,
     learning_updates: learningUpdates,
     phase_outputs: phaseOutputs,
+    mutation_results: mutationValidation.mutationResults,
     subdomains_discovered: subdomains,
     iterations_completed: 5,
     total_scans: Object.values(PHASE_SCAN_TYPES).flat().length + (subdomains.length * 5)
