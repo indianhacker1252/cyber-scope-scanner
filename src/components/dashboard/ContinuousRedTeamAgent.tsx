@@ -159,6 +159,10 @@ const ContinuousRedTeamAgent = () => {
   const [vulnKB, setVulnKB] = useState<any[]>([]);
   const [kbUpdating, setKbUpdating] = useState(false);
 
+  // Mutation Matrix state (integrated)
+  const [mutationAttempts, setMutationAttempts] = useState<MutationAttempt[]>([]);
+  const [mutationEvents, setMutationEvents] = useState<string[]>([]);
+
   // Detected tech/ports
   const [detectedTech, setDetectedTech] = useState<string[]>([]);
   const [detectedPorts, setDetectedPorts] = useState<number[]>([]);
