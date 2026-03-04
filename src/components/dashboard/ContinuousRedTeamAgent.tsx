@@ -23,7 +23,7 @@ import {
   GitBranch, Database, TrendingUp, Eye, Network, Bug, Lock, Crosshair,
   Layers, Cpu, BarChart3, Globe, ChevronRight, Code2, Filter,
   CheckCircle2, XCircle, Info, MessageSquare, Send, TreePine,
-  Wifi, WifiOff, BookOpen, ChevronDown
+  Wifi, WifiOff, BookOpen, ChevronDown, RotateCcw, Unlock
 } from "lucide-react";
 
 // ===== INTERFACES =====
