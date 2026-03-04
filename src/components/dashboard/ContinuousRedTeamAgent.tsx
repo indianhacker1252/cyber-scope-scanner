@@ -1164,6 +1164,9 @@ const ContinuousRedTeamAgent = () => {
                 { label: 'Attack Chains', value: status.attackChains.length, color: '' },
                 { label: 'Technologies', value: detectedTech.length, color: 'text-cyan-400' },
                 { label: 'Open Ports', value: detectedPorts.length, color: 'text-purple-400' },
+                { label: '🧬 Mutations', value: mutationAttempts.length, color: 'text-purple-400' },
+                { label: '✅ Bypasses', value: mutationAttempts.filter(a => a.status === 'success').length, color: 'text-green-400' },
+                { label: '🛡️ Defended', value: mutationAttempts.filter(a => a.status === 'defended').length, color: 'text-blue-400' },
               ].map(s => (
                 <div key={s.label} className="flex justify-between">
                   <span className="text-muted-foreground text-sm">{s.label}</span>
