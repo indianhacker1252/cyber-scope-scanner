@@ -484,10 +484,37 @@ const ContinuousRedTeamAgent = () => {
         }
       }
 
-      // Step 5: Build target tree
+      // Step 5: Mutation Validation Phase
+      if (allFindings.filter(f => (f.severity === 'critical' || f.severity === 'high') && f.exploitable).length > 0) {
+        addOutput(`\n━━━ MUTATION VALIDATION ENGINE ━━━`, 'info');
+        addAIThought(`Activating Mutation Matrix — firing CVE-mapped payloads against ${allFindings.filter(f => f.exploitable).length} exploitable findings to confirm with WAF evasion retry loop.`, ['mutation-validation', 'cve-mapping']);
+        setStatus(prev => ({ ...prev, phase: 'mutation-validation', progress: 85 }));
+        // The continuous operation already runs mutation validation server-side
+        // Mutation results appear in realtime via mutation_attempts subscription
+        addOutput(`Mutation validation running server-side (results stream via realtime)...`, 'info');
+      }
+
       setStatus(prev => ({ ...prev, findings: [...allFindings], progress: 90 }));
 
-      // Step 6: Correlation
+      // Step 6: Deduplication
+      const beforeDedup = allFindings.length;
+      const dedupMap = new Map<string, typeof allFindings[0]>();
+      for (const f of allFindings) {
+        const normTitle = f.title.replace(/^\[[^\]]+\]\s*/, '').toLowerCase().trim();
+        const key = `${f.type}|${normTitle}|${f.severity}`;
+        const existing = dedupMap.get(key);
+        if (!existing || (f.confidence || 0) > (existing.confidence || 0) || (f.verified && !existing.verified)) {
+          dedupMap.set(key, f);
+        }
+      }
+      const dedupedFindings = Array.from(dedupMap.values());
+      if (beforeDedup > dedupedFindings.length) {
+        addOutput(`🧹 Dedup: removed ${beforeDedup - dedupedFindings.length} duplicate findings`, 'info');
+        allFindings.length = 0;
+        allFindings.push(...dedupedFindings);
+      }
+
+      // Step 7: Correlation
       if (allFindings.length >= 2) {
         addOutput(`\n━━━ CORRELATION ENGINE ━━━`, 'info');
         addAIThought(`Correlating ${allFindings.length} findings to identify multi-stage attack paths and risk amplification patterns.`);
