@@ -34,6 +34,7 @@ import VulnerabilityEngine from "@/components/dashboard/VulnerabilityEngine";
 import ApexSentinel from "@/components/dashboard/ApexSentinel";
 import ContinuousRedTeamAgent from "@/components/dashboard/ContinuousRedTeamAgent";
 import MutationMatrix from "@/components/dashboard/MutationMatrix";
+import AttackSurfaceMatrix from "@/components/dashboard/AttackSurfaceMatrix";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
