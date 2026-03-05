@@ -57,6 +57,8 @@ const Index = () => {
         return <ContinuousRedTeamAgent />;
       case "mutation-matrix":
         return <MutationMatrix />;
+      case "attack-surface-matrix":
+        return <AttackSurfaceMatrix />;
       case "threat-intel":
         return <ThreatIntelligence />;
       case "security-advisor":

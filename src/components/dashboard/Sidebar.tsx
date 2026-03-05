@@ -57,7 +57,7 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
         { id: "ai-payload-engine", label: "AI Payload Engine" },
         { id: "apex-sentinel", label: "Apex Sentinel" },
         { id: "continuous-red-team", label: "Continuous Red Team" },
-        { id: "mutation-matrix", label: "Mutation Matrix" },
+        { id: "attack-surface-matrix", label: "Attack Surface Matrix" },
         { id: "attack-visualization", label: "Live Visualization" },
         { id: "threat-intel", label: "Threat Intelligence" },
         { id: "security-advisor", label: "Security Advisor" },
