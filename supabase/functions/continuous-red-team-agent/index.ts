@@ -1280,6 +1280,65 @@ async function executeContinuousOperation(
   phaseOutputs['recon'] = reconResult.output;
   phaseOutputs['scanning'] = scanningResult.output;
 
+  // === NEW: Heuristic payload generation based on discovered parameters ===
+  const discoveredParams = extractParametersFromFindings(allFindings);
+  if (discoveredParams.length > 0) {
+    console.log(`[Red Team] Phase 1.5: Heuristic payload generation for ${discoveredParams.length} parameters`);
+    try {
+      const heuristicResp = await fetch(`${SUPABASE_URL}/functions/v1/advanced-offensive-engine`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate-heuristic-payloads',
+          data: { parameters: discoveredParams, techStack: [], target: state.target }
+        })
+      });
+      if (heuristicResp.ok) {
+        const heuristic = await heuristicResp.json();
+        if (heuristic.payloads?.length > 0) {
+          phaseOutputs['heuristic'] = [`[HEURISTIC] Generated ${heuristic.payloads.length} context-aware payloads for ${discoveredParams.length} parameters`];
+          // Fire heuristic payloads through attack-execution-loop
+          const heuristicPayloads = heuristic.payloads.slice(0, 20).map((p: any) => ({
+            raw: p.raw, encoded: encodeURIComponent(p.raw),
+            attackType: p.attackType, parameter: p.parameter,
+            injectionPoint: p.injectionPoint || 'query',
+          }));
+          const atkResp = await fetch(`${SUPABASE_URL}/functions/v1/attack-execution-loop`, {
+            method: 'POST',
+            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+            body: JSON.stringify({ target: state.target, payloads: heuristicPayloads, maxRetries: 5, techStack: [] }),
+          });
+          if (atkResp.ok) {
+            const atkResult = await atkResp.json();
+            if (atkResult.successCount > 0) {
+              for (const r of (atkResult.results || []).filter((r: any) => r.success)) {
+                allFindings.push({
+                  id: crypto.randomUUID(),
+                  type: r.payload?.attackType || 'heuristic',
+                  severity: 'critical',
+                  title: `Heuristic ${r.payload?.attackType?.toUpperCase()} via ${r.payload?.parameter}`,
+                  description: `Context-aware payload bypassed defenses on parameter "${r.payload?.parameter}"`,
+                  evidence: { raw: r, payload: r.payload },
+                  timestamp: new Date().toISOString(),
+                  phase: 'heuristic-exploitation',
+                  tool_used: 'heuristic-generator',
+                  exploitable: true,
+                  exploit_confirmed: true,
+                  confidence: 0.95,
+                  verified: true,
+                  poc_data: `Heuristic Exploit\nParam: ${r.payload?.parameter}\nPayload: ${r.payload?.raw}\nHTTP: ${r.httpStatus}`,
+                });
+              }
+              phaseOutputs['heuristic'].push(`[HEURISTIC] ✅ ${atkResult.successCount} payloads bypassed defenses!`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Heuristic] Error:', e);
+    }
+  }
+
   // Extract tech stack and ports from recon
   const techFromFindings = allFindings
     .filter(f => f.type?.toLowerCase().includes('technology') || f.tool_used === 'tech')
