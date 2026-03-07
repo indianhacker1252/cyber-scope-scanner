@@ -1227,6 +1227,39 @@ function mapSeverity(sev: string): Finding['severity'] {
   return 'info';
 }
 
+// ===== Extract parameters from findings for heuristic generation =====
+function extractParametersFromFindings(findings: Finding[]): { name: string; location: string }[] {
+  const params = new Set<string>();
+  const result: { name: string; location: string }[] = [];
+  
+  for (const f of findings) {
+    // Extract from evidence
+    const param = f.evidence?.raw?.parameter || f.evidence?.parameter;
+    if (param && !params.has(param)) {
+      params.add(param);
+      result.push({ name: param, location: 'query' });
+    }
+    // Extract common params from URLs in findings
+    const urlParams = ['id', 'q', 'search', 'url', 'file', 'path', 'redirect', 'page', 'name', 'cmd', 'action'];
+    for (const p of urlParams) {
+      if (!params.has(p) && (f.title?.toLowerCase().includes(p) || f.description?.toLowerCase().includes(p))) {
+        params.add(p);
+        result.push({ name: p, location: 'query' });
+      }
+    }
+  }
+  
+  // Always include common injection points
+  for (const p of ['q', 'search', 'id', 'page', 'url', 'file', 'cmd', 'name']) {
+    if (!params.has(p)) {
+      params.add(p);
+      result.push({ name: p, location: 'query' });
+    }
+  }
+  
+  return result;
+}
+
 // ===== Subdomain Enumeration (NO LIMIT) =====
 
 async function enumerateSubdomains(target: string, authHeader: string): Promise<string[]> {
