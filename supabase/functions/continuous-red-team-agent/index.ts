@@ -1409,6 +1409,102 @@ async function executeContinuousOperation(
   phaseOutputs['exploitation'] = exploitResult.output;
   phaseOutputs['post-exploit'] = postExploitResult.output;
 
+  // === NEW Phase 4.5: DOM Taint Analysis for XSS verification ===
+  const xssFindings = allFindings.filter(f => f.type?.toLowerCase().includes('xss'));
+  if (xssFindings.length > 0) {
+    console.log(`[Red Team] Phase 4.5: DOM Taint Analysis for ${xssFindings.length} XSS findings`);
+    const taintOutput: string[] = [];
+    for (const xf of xssFindings.slice(0, 5)) {
+      try {
+        const taintResp = await fetch(`${SUPABASE_URL}/functions/v1/advanced-offensive-engine`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'dom-taint-analysis',
+            data: {
+              target: state.target,
+              parameter: xf.evidence?.raw?.parameter || 'q',
+              paramLocation: 'query',
+              payload: xf.evidence?.raw?.poc || '<img src=x onerror=alert(1)>',
+              canaryId: `taint_${crypto.randomUUID().slice(0, 8)}`,
+              context: 'auto',
+              timeout: 8000,
+            }
+          })
+        });
+        if (taintResp.ok) {
+          const taint = await taintResp.json();
+          if (taint.result?.xssConfirmed) {
+            xf.exploit_confirmed = true;
+            xf.verified = true;
+            xf.confidence = 0.98;
+            xf.poc_data = `DOM Taint Confirmed XSS\nContext: ${taint.result.domContext}\nBreakout: ${taint.result.breakoutMethod}\nPayload: ${xf.evidence?.raw?.poc}`;
+            taintOutput.push(`[DOM-TAINT] ✅ ${xf.title} → XSS CONFIRMED (${taint.result.domContext})`);
+          } else if (taint.result?.contextBreakout) {
+            xf.confidence = Math.max(xf.confidence || 0, 0.8);
+            taintOutput.push(`[DOM-TAINT] ⚠️ ${xf.title} → Context breakout detected but no execution`);
+          } else {
+            xf.confidence = Math.min(xf.confidence || 0.5, 0.3);
+            taintOutput.push(`[DOM-TAINT] ❌ ${xf.title} → No reflection/execution (likely FP)`);
+          }
+        }
+      } catch (e) {
+        taintOutput.push(`[DOM-TAINT] Error: ${e.message}`);
+      }
+    }
+    phaseOutputs['dom-taint'] = taintOutput;
+  }
+
+  // === NEW Phase 4.7: Race Condition Testing on state-changing endpoints ===
+  try {
+    console.log(`[Red Team] Phase 4.7: Race Condition Testing`);
+    const raceOutput: string[] = [];
+    const racePaths = ['/api/checkout', '/api/transfer', '/api/vote', '/api/like'];
+    for (const path of racePaths) {
+      try {
+        const raceResp = await fetch(`${SUPABASE_URL}/functions/v1/advanced-offensive-engine`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'race-condition-test',
+            data: { target: state.target, method: 'POST', path, concurrency: 30, roundNumber: 1 }
+          })
+        });
+        if (raceResp.ok) {
+          const race = await raceResp.json();
+          if (race.anomalies?.length > 0) {
+            for (const anomaly of race.anomalies) {
+              if (anomaly.type === 'duplicate-processing' || anomaly.type === 'state-inconsistency') {
+                allFindings.push({
+                  id: crypto.randomUUID(),
+                  type: 'race-condition',
+                  severity: 'critical',
+                  title: `Race Condition (TOCTOU) on ${path}`,
+                  description: anomaly.description,
+                  evidence: { raw: anomaly.evidence, path },
+                  timestamp: new Date().toISOString(),
+                  phase: 'race-condition',
+                  tool_used: 'turbosmash',
+                  exploitable: true,
+                  exploit_confirmed: true,
+                  confidence: 0.9,
+                  verified: true,
+                  poc_data: `Race Condition\nEndpoint: ${path}\n${anomaly.description}`,
+                });
+                raceOutput.push(`[RACE] ✅ ${path} → TOCTOU DETECTED!`);
+              }
+            }
+          } else {
+            raceOutput.push(`[RACE] ❌ ${path} → No race condition`);
+          }
+        }
+      } catch {}
+    }
+    phaseOutputs['race-condition'] = raceOutput;
+  } catch (e) {
+    console.warn('[Race] Error:', e);
+  }
+
   // Phase 5: CVE CONFIRMATION (NEW - exploit each CVE to confirm)
   if (techStack.length > 0) {
     console.log(`[Red Team] Phase 5: CVE Confirmation via Exploitation | Tech: ${techStack.join(', ')}`);
