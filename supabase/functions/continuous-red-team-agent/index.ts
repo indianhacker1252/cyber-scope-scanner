@@ -1227,6 +1227,39 @@ function mapSeverity(sev: string): Finding['severity'] {
   return 'info';
 }
 
+// ===== Extract parameters from findings for heuristic generation =====
+function extractParametersFromFindings(findings: Finding[]): { name: string; location: string }[] {
+  const params = new Set<string>();
+  const result: { name: string; location: string }[] = [];
+  
+  for (const f of findings) {
+    // Extract from evidence
+    const param = f.evidence?.raw?.parameter || f.evidence?.parameter;
+    if (param && !params.has(param)) {
+      params.add(param);
+      result.push({ name: param, location: 'query' });
+    }
+    // Extract common params from URLs in findings
+    const urlParams = ['id', 'q', 'search', 'url', 'file', 'path', 'redirect', 'page', 'name', 'cmd', 'action'];
+    for (const p of urlParams) {
+      if (!params.has(p) && (f.title?.toLowerCase().includes(p) || f.description?.toLowerCase().includes(p))) {
+        params.add(p);
+        result.push({ name: p, location: 'query' });
+      }
+    }
+  }
+  
+  // Always include common injection points
+  for (const p of ['q', 'search', 'id', 'page', 'url', 'file', 'cmd', 'name']) {
+    if (!params.has(p)) {
+      params.add(p);
+      result.push({ name: p, location: 'query' });
+    }
+  }
+  
+  return result;
+}
+
 // ===== Subdomain Enumeration (NO LIMIT) =====
 
 async function enumerateSubdomains(target: string, authHeader: string): Promise<string[]> {
@@ -1279,6 +1312,65 @@ async function executeContinuousOperation(
   allFindings.push(...reconResult.findings, ...scanningResult.findings);
   phaseOutputs['recon'] = reconResult.output;
   phaseOutputs['scanning'] = scanningResult.output;
+
+  // === NEW: Heuristic payload generation based on discovered parameters ===
+  const discoveredParams = extractParametersFromFindings(allFindings);
+  if (discoveredParams.length > 0) {
+    console.log(`[Red Team] Phase 1.5: Heuristic payload generation for ${discoveredParams.length} parameters`);
+    try {
+      const heuristicResp = await fetch(`${SUPABASE_URL}/functions/v1/advanced-offensive-engine`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate-heuristic-payloads',
+          data: { parameters: discoveredParams, techStack: [], target: state.target }
+        })
+      });
+      if (heuristicResp.ok) {
+        const heuristic = await heuristicResp.json();
+        if (heuristic.payloads?.length > 0) {
+          phaseOutputs['heuristic'] = [`[HEURISTIC] Generated ${heuristic.payloads.length} context-aware payloads for ${discoveredParams.length} parameters`];
+          // Fire heuristic payloads through attack-execution-loop
+          const heuristicPayloads = heuristic.payloads.slice(0, 20).map((p: any) => ({
+            raw: p.raw, encoded: encodeURIComponent(p.raw),
+            attackType: p.attackType, parameter: p.parameter,
+            injectionPoint: p.injectionPoint || 'query',
+          }));
+          const atkResp = await fetch(`${SUPABASE_URL}/functions/v1/attack-execution-loop`, {
+            method: 'POST',
+            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+            body: JSON.stringify({ target: state.target, payloads: heuristicPayloads, maxRetries: 5, techStack: [] }),
+          });
+          if (atkResp.ok) {
+            const atkResult = await atkResp.json();
+            if (atkResult.successCount > 0) {
+              for (const r of (atkResult.results || []).filter((r: any) => r.success)) {
+                allFindings.push({
+                  id: crypto.randomUUID(),
+                  type: r.payload?.attackType || 'heuristic',
+                  severity: 'critical',
+                  title: `Heuristic ${r.payload?.attackType?.toUpperCase()} via ${r.payload?.parameter}`,
+                  description: `Context-aware payload bypassed defenses on parameter "${r.payload?.parameter}"`,
+                  evidence: { raw: r, payload: r.payload },
+                  timestamp: new Date().toISOString(),
+                  phase: 'heuristic-exploitation',
+                  tool_used: 'heuristic-generator',
+                  exploitable: true,
+                  exploit_confirmed: true,
+                  confidence: 0.95,
+                  verified: true,
+                  poc_data: `Heuristic Exploit\nParam: ${r.payload?.parameter}\nPayload: ${r.payload?.raw}\nHTTP: ${r.httpStatus}`,
+                });
+              }
+              phaseOutputs['heuristic'].push(`[HEURISTIC] ✅ ${atkResult.successCount} payloads bypassed defenses!`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Heuristic] Error:', e);
+    }
+  }
 
   // Extract tech stack and ports from recon
   const techFromFindings = allFindings
@@ -1349,6 +1441,102 @@ async function executeContinuousOperation(
   allFindings.push(...exploitResult.findings, ...postExploitResult.findings);
   phaseOutputs['exploitation'] = exploitResult.output;
   phaseOutputs['post-exploit'] = postExploitResult.output;
+
+  // === NEW Phase 4.5: DOM Taint Analysis for XSS verification ===
+  const xssFindings = allFindings.filter(f => f.type?.toLowerCase().includes('xss'));
+  if (xssFindings.length > 0) {
+    console.log(`[Red Team] Phase 4.5: DOM Taint Analysis for ${xssFindings.length} XSS findings`);
+    const taintOutput: string[] = [];
+    for (const xf of xssFindings.slice(0, 5)) {
+      try {
+        const taintResp = await fetch(`${SUPABASE_URL}/functions/v1/advanced-offensive-engine`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'dom-taint-analysis',
+            data: {
+              target: state.target,
+              parameter: xf.evidence?.raw?.parameter || 'q',
+              paramLocation: 'query',
+              payload: xf.evidence?.raw?.poc || '<img src=x onerror=alert(1)>',
+              canaryId: `taint_${crypto.randomUUID().slice(0, 8)}`,
+              context: 'auto',
+              timeout: 8000,
+            }
+          })
+        });
+        if (taintResp.ok) {
+          const taint = await taintResp.json();
+          if (taint.result?.xssConfirmed) {
+            xf.exploit_confirmed = true;
+            xf.verified = true;
+            xf.confidence = 0.98;
+            xf.poc_data = `DOM Taint Confirmed XSS\nContext: ${taint.result.domContext}\nBreakout: ${taint.result.breakoutMethod}\nPayload: ${xf.evidence?.raw?.poc}`;
+            taintOutput.push(`[DOM-TAINT] ✅ ${xf.title} → XSS CONFIRMED (${taint.result.domContext})`);
+          } else if (taint.result?.contextBreakout) {
+            xf.confidence = Math.max(xf.confidence || 0, 0.8);
+            taintOutput.push(`[DOM-TAINT] ⚠️ ${xf.title} → Context breakout detected but no execution`);
+          } else {
+            xf.confidence = Math.min(xf.confidence || 0.5, 0.3);
+            taintOutput.push(`[DOM-TAINT] ❌ ${xf.title} → No reflection/execution (likely FP)`);
+          }
+        }
+      } catch (e) {
+        taintOutput.push(`[DOM-TAINT] Error: ${e.message}`);
+      }
+    }
+    phaseOutputs['dom-taint'] = taintOutput;
+  }
+
+  // === NEW Phase 4.7: Race Condition Testing on state-changing endpoints ===
+  try {
+    console.log(`[Red Team] Phase 4.7: Race Condition Testing`);
+    const raceOutput: string[] = [];
+    const racePaths = ['/api/checkout', '/api/transfer', '/api/vote', '/api/like'];
+    for (const path of racePaths) {
+      try {
+        const raceResp = await fetch(`${SUPABASE_URL}/functions/v1/advanced-offensive-engine`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'race-condition-test',
+            data: { target: state.target, method: 'POST', path, concurrency: 30, roundNumber: 1 }
+          })
+        });
+        if (raceResp.ok) {
+          const race = await raceResp.json();
+          if (race.anomalies?.length > 0) {
+            for (const anomaly of race.anomalies) {
+              if (anomaly.type === 'duplicate-processing' || anomaly.type === 'state-inconsistency') {
+                allFindings.push({
+                  id: crypto.randomUUID(),
+                  type: 'race-condition',
+                  severity: 'critical',
+                  title: `Race Condition (TOCTOU) on ${path}`,
+                  description: anomaly.description,
+                  evidence: { raw: anomaly.evidence, path },
+                  timestamp: new Date().toISOString(),
+                  phase: 'race-condition',
+                  tool_used: 'turbosmash',
+                  exploitable: true,
+                  exploit_confirmed: true,
+                  confidence: 0.9,
+                  verified: true,
+                  poc_data: `Race Condition\nEndpoint: ${path}\n${anomaly.description}`,
+                });
+                raceOutput.push(`[RACE] ✅ ${path} → TOCTOU DETECTED!`);
+              }
+            }
+          } else {
+            raceOutput.push(`[RACE] ❌ ${path} → No race condition`);
+          }
+        }
+      } catch {}
+    }
+    phaseOutputs['race-condition'] = raceOutput;
+  } catch (e) {
+    console.warn('[Race] Error:', e);
+  }
 
   // Phase 5: CVE CONFIRMATION (NEW - exploit each CVE to confirm)
   if (techStack.length > 0) {
