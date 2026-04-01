@@ -35,6 +35,8 @@ import ApexSentinel from "@/components/dashboard/ApexSentinel";
 import ContinuousRedTeamAgent from "@/components/dashboard/ContinuousRedTeamAgent";
 import MutationMatrix from "@/components/dashboard/MutationMatrix";
 import AttackSurfaceMatrix from "@/components/dashboard/AttackSurfaceMatrix";
+import ValidationWorkspace from "@/components/dashboard/ValidationWorkspace";
+import SystemHealthDashboard from "@/components/dashboard/SystemHealthDashboard";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");

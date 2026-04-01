@@ -82,6 +82,8 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
         { id: "security-testing-hub", label: "Testing Overview" },
         { id: "vulnerability-engine", label: "Vulnerability Engine" },
         { id: "webhackers-weapons", label: "WebHackers Arsenal" },
+        { id: "validation-workspace", label: "Validation Workspace" },
+        { id: "system-health", label: "System Health" },
       ]
     },
   ];
