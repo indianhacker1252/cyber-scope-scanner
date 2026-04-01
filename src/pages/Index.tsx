@@ -79,6 +79,10 @@ const Index = () => {
         return <SecurityTestingHub />;
       case "vulnerability-engine":
         return <VulnerabilityEngine />;
+      case "validation-workspace":
+        return <ValidationWorkspace />;
+      case "system-health":
+        return <SystemHealthDashboard />;
       case "webhackers-weapons":
         return <WebHackersWeapons />;
       case "scan-results":
