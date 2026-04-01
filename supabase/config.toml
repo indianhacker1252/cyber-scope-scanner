@@ -50,3 +50,12 @@ verify_jwt = false
 
 [functions.advanced-offensive-engine]
 verify_jwt = false
+
+[functions.validation-scaffolder]
+verify_jwt = false
+
+[functions.safe-execution-engine]
+verify_jwt = false
+
+[functions.audit-report-generator]
+verify_jwt = false

@@ -35,6 +35,8 @@ import ApexSentinel from "@/components/dashboard/ApexSentinel";
 import ContinuousRedTeamAgent from "@/components/dashboard/ContinuousRedTeamAgent";
 import MutationMatrix from "@/components/dashboard/MutationMatrix";
 import AttackSurfaceMatrix from "@/components/dashboard/AttackSurfaceMatrix";
+import ValidationWorkspace from "@/components/dashboard/ValidationWorkspace";
+import SystemHealthDashboard from "@/components/dashboard/SystemHealthDashboard";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -77,6 +79,10 @@ const Index = () => {
         return <SecurityTestingHub />;
       case "vulnerability-engine":
         return <VulnerabilityEngine />;
+      case "validation-workspace":
+        return <ValidationWorkspace />;
+      case "system-health":
+        return <SystemHealthDashboard />;
       case "webhackers-weapons":
         return <WebHackersWeapons />;
       case "scan-results":
