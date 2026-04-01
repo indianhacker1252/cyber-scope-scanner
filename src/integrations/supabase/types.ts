@@ -479,6 +479,48 @@ export type Database = {
           },
         ]
       }
+      audit_agents: {
+        Row: {
+          agent_name: string
+          agent_type: string
+          configuration: Json | null
+          created_at: string
+          id: string
+          last_heartbeat: string | null
+          metrics: Json | null
+          status: string
+          target_endpoint: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agent_name: string
+          agent_type?: string
+          configuration?: Json | null
+          created_at?: string
+          id?: string
+          last_heartbeat?: string | null
+          metrics?: Json | null
+          status?: string
+          target_endpoint?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          agent_name?: string
+          agent_type?: string
+          configuration?: Json | null
+          created_at?: string
+          id?: string
+          last_heartbeat?: string | null
+          metrics?: Json | null
+          status?: string
+          target_endpoint?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       login_attempts: {
         Row: {
           attempted_at: string
@@ -683,6 +725,69 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      validation_evidence: {
+        Row: {
+          created_at: string
+          cvss_score: number | null
+          evidence_package: Json | null
+          execution_output: string | null
+          execution_status: string | null
+          finding_severity: string
+          finding_title: string
+          http_request_data: Json | null
+          http_response_data: Json | null
+          id: string
+          poc_script: string | null
+          remediation_report: string | null
+          script_language: string | null
+          target: string
+          updated_at: string
+          user_id: string
+          validated_at: string | null
+          vulnerability_type: string | null
+        }
+        Insert: {
+          created_at?: string
+          cvss_score?: number | null
+          evidence_package?: Json | null
+          execution_output?: string | null
+          execution_status?: string | null
+          finding_severity?: string
+          finding_title: string
+          http_request_data?: Json | null
+          http_response_data?: Json | null
+          id?: string
+          poc_script?: string | null
+          remediation_report?: string | null
+          script_language?: string | null
+          target: string
+          updated_at?: string
+          user_id: string
+          validated_at?: string | null
+          vulnerability_type?: string | null
+        }
+        Update: {
+          created_at?: string
+          cvss_score?: number | null
+          evidence_package?: Json | null
+          execution_output?: string | null
+          execution_status?: string | null
+          finding_severity?: string
+          finding_title?: string
+          http_request_data?: Json | null
+          http_response_data?: Json | null
+          id?: string
+          poc_script?: string | null
+          remediation_report?: string | null
+          script_language?: string | null
+          target?: string
+          updated_at?: string
+          user_id?: string
+          validated_at?: string | null
+          vulnerability_type?: string | null
         }
         Relationships: []
       }
