@@ -450,6 +450,7 @@ serve(async (req) => {
         const { target, phase } = data;
         const phaseResult = await executePhase(phase, target, authHeader);
         
+        // Record to ai_learnings
         try {
           await supabase.from('ai_learnings').insert({
             user_id: userId,
@@ -463,8 +464,22 @@ serve(async (req) => {
               ? `${phase} effective - found ${phaseResult.findings.map((f: any) => f.type).join(', ')}`
               : `${phase} yielded no findings - consider expanding scan scope or adjusting parameters`
           });
-        } catch (e) {
-          console.warn('[AI Learning] Failed to record:', e);
+        } catch (e) { console.warn('[AI Learning] Failed to record:', e); }
+
+        // Record each finding to attack_attempts with proper success flag
+        if (phaseResult.findings?.length > 0) {
+          try {
+            const attempts = phaseResult.findings.map((f: any) => ({
+              user_id: userId,
+              target: f.subdomain || target,
+              attack_type: f.type || phase,
+              technique: f.tool_used || phase,
+              success: f.verified === true || f.exploit_confirmed === true || (f.severity !== 'info' && (f.confidence || 0) >= 0.5),
+              output: f.description?.slice(0, 500) || null,
+              metadata: { severity: f.severity, confidence: f.confidence, phase } as any,
+            }));
+            await supabase.from('attack_attempts').insert(attempts);
+          } catch (e) { console.warn('[attack_attempts] Insert failed:', e); }
         }
         
         return new Response(JSON.stringify({ success: true, phase, ...phaseResult }), {
