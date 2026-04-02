@@ -616,9 +616,18 @@ serve(async (req) => {
   }
 });
 
-// ===== Security Scan Integration =====
+// ===== Security Scan Integration with Retry + Strategy Rotation =====
 
-async function callSecurityScan(scanType: string, target: string, authHeader: string): Promise<any> {
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/125.0.0.0',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+];
+
+async function callSecurityScan(scanType: string, target: string, authHeader: string, retryCount = 0): Promise<any> {
+  const maxRetries = 3;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000);
@@ -626,20 +635,39 @@ async function callSecurityScan(scanType: string, target: string, authHeader: st
       method: 'POST',
       headers: {
         'Authorization': authHeader, 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY,
+        'User-Agent': USER_AGENTS[retryCount % USER_AGENTS.length],
       },
-      body: JSON.stringify({ scanType, target, options: {} }),
+      body: JSON.stringify({ scanType, target, options: { retry: retryCount } }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
     if (!response.ok) {
       const errorText = await response.text();
+      // Retry with strategy rotation on 403/429
+      if ((response.status === 403 || response.status === 429) && retryCount < maxRetries) {
+        console.log(`[security-scan ${scanType}] ${response.status}, retrying (${retryCount + 1}/${maxRetries})...`);
+        await new Promise(r => setTimeout(r, 1000 * (retryCount + 1) + Math.random() * 2000));
+        return callSecurityScan(scanType, target, authHeader, retryCount + 1);
+      }
       console.warn(`[security-scan ${scanType}] ${response.status}: ${errorText}`);
       return { success: false, error: errorText, scanType, target };
     }
-    return await response.json();
-  } catch (error) {
+    const result = await response.json();
+    // If zero findings and retries left, try again with different strategy
+    const findings = result.findings || result.vulnerabilities || [];
+    if (findings.length === 0 && retryCount < maxRetries && ['sqli', 'xss', 'lfi', 'ssrf'].includes(scanType)) {
+      console.log(`[security-scan ${scanType}] 0 findings, retrying with rotation (${retryCount + 1}/${maxRetries})...`);
+      await new Promise(r => setTimeout(r, 500 + Math.random() * 1000));
+      return callSecurityScan(scanType, target, authHeader, retryCount + 1);
+    }
+    return result;
+  } catch (error: any) {
     if (error.name === 'AbortError') {
-      return { success: false, error: 'Scan timed out', scanType, target };
+      if (retryCount < maxRetries) {
+        console.log(`[security-scan ${scanType}] Timeout, retrying (${retryCount + 1}/${maxRetries})...`);
+        return callSecurityScan(scanType, target, authHeader, retryCount + 1);
+      }
+      return { success: false, error: 'Scan timed out after retries', scanType, target };
     }
     return { success: false, error: error.message, scanType, target };
   }
