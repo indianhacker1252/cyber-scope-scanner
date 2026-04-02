@@ -401,6 +401,7 @@ serve(async (req) => {
 
         const result = await executeContinuousOperation(agentState, objective, config, authHeader, supabase, userId);
 
+        // Record to attack_chains
         await supabase.from('attack_chains').insert({
           user_id: userId,
           target,
@@ -413,6 +414,27 @@ serve(async (req) => {
             learning_updates: result.learning_updates
           }
         });
+
+        // Record all findings to attack_attempts with proper success status
+        const attemptInserts = result.findings.map((f: Finding) => ({
+          user_id: userId,
+          target: f.subdomain || target,
+          attack_type: f.type || 'scan',
+          technique: f.tool_used || f.phase || 'unknown',
+          success: f.verified === true || f.exploit_confirmed === true || (f.severity !== 'info' && (f.confidence || 0) >= 0.5),
+          payload: f.poc_data || f.evidence?.raw?.poc || null,
+          output: f.description?.slice(0, 500) || null,
+          metadata: { severity: f.severity, confidence: f.confidence, phase: f.phase, cve: f.cve_id } as any,
+        }));
+        
+        if (attemptInserts.length > 0) {
+          try {
+            // Insert in batches of 20
+            for (let i = 0; i < attemptInserts.length; i += 20) {
+              await supabase.from('attack_attempts').insert(attemptInserts.slice(i, i + 20));
+            }
+          } catch (e) { console.warn('[attack_attempts] Insert failed:', e); }
+        }
 
         return new Response(JSON.stringify({
           success: true,
