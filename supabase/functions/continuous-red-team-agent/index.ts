@@ -595,6 +595,15 @@ serve(async (req) => {
         });
       }
 
+      case 'spider-crawl': {
+        // Deep spider mode: crawl all endpoints, params, subdomains
+        const { target: spiderTarget, depth = 3 } = data;
+        const spiderResult = await spiderCrawlTarget(spiderTarget, depth, authHeader, supabase, userId);
+        return new Response(JSON.stringify({ success: true, ...spiderResult }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
       case 'fine-tune-model': {
         const { training_data, model_type } = data;
         const fineTuningResult = await fineTuneAgentModel(training_data, model_type);
