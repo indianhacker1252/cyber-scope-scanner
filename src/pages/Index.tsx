@@ -48,6 +48,8 @@ const Index = () => {
         return <DashboardOverview />;
       case "target":
         return <TargetInput onNavigateToResults={() => setActiveSection("scan-results")} />;
+      case "vapt-workflow":
+        return <VAPTWorkflow />;
       case "ai-hub":
         return <AIHub />;
       case "ai-learning":
