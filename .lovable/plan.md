@@ -1,35 +1,36 @@
 
-# CyberScope Enhancement Plan
+# CyberScope: Principal VAPT Workflow Integration
 
-## 1. Smarter AI Scanning Pipeline (Edge Function: `advanced-recon-engine`)
-- **Spider-mode scanning**: Recursive endpoint/param discovery across all subdomains
-- **Retry logic with strategy rotation**: Auto-retry failed scans with rotated User-Agents, methods, and encoding
-- **OWASP Top 10 mapped test suites**: Each scan maps to specific OWASP categories (A01-A10)
-- **CVE correlation**: Auto-map discovered tech stacks to known CVEs via NVD data
-- **AI next-action planner**: After each scan phase, AI decides the optimal next test based on findings
+## Goal
+Embed the user's 7-phase professional bug bounty workflow directly into the scanning pipeline and UI, consolidating duplicate modules.
 
-## 2. Live Attack Visualization Fix
-- **Fix 100% failed timeline**: The `AttackVisualization.tsx` timeline shows all attempts as failed — fix status tracking so successful findings show green
-- **Real-time metrics**: Working success rate, findings-per-hour, and phase progression counters
-- **Phase-aware timeline**: Show scan phases (Recon → Discovery → Testing → Validation) with proper status
+## Phase 1: Consolidate Redundant Modules
+- **Merge** Reconnaissance, ScopeDiscovery, AttackSurfaceMapping → single `ReconEngine` component
+- **Merge** ExploitTesting, WebVulnerabilities, AdvancedScanning → single `VulnTestingEngine` component  
+- **Remove** PentestGPT (replaced by smarter AI integrated into each phase)
+- **Remove** duplicate AI modules (AIHub, AIAssistant overlap)
 
-## 3. Validation & Reporting Enhancement
-- **Enhanced PoC scaffolding**: Improve the validation-scaffolder to generate more precise, tech-stack-aware scripts
-- **Professional audit report edge function**: Generate structured Markdown reports with CVSS 3.1 scoring, OWASP mapping, and remediation guidance
+## Phase 2: Enhance `continuous-red-team-agent` Edge Function
+Add the 7-phase PTES workflow as the core execution loop:
 
-## 4. Reconnaissance Depth
-- **Deep subdomain enumeration**: Certificate transparency, DNS brute-force, permutation scanning
-- **Technology fingerprinting enhancement**: Deeper header/body/JS analysis for framework versions
-- **Parameter discovery**: Automated parameter mining from JS files, archived URLs, and API schemas
+1. **Recon & Attack Surface Mapping**: Infrastructure profiling (tech stack versions), asset discovery (subdomain + directory brute), cloud identity detection (AWS/GCP/Azure metadata URLs)
+2. **Context-Aware Differential Fuzzing**: Baseline request → breaker character injection → differential analysis (response size/time/status changes)
+3. **CVE Correlation**: Auto-map detected tech+version to NVD CVEs, check for backport detection, misconfiguration scanning
+4. **OWASP Deep Dives**: SQLi/NoSQLi time-based verification, IDOR parameter swapping, SSRF internal probe, business logic state analysis
+5. **PoC Generation**: Auto-generate Python/curl scripts proving each finding
+6. **False Positive Elimination**: 3x re-test consistency, WAF bypass verification, sanitization detection
+7. **Remediation Strategy**: Short-term WAF rule + root-cause code fix for each finding
 
-## 5. OWASP Top 10 & CVE Mapping
-- **OWASP test matrix**: Dedicated test cases for each OWASP Top 10 category with specific payloads
-- **CVE intelligence feed**: Map discovered services/versions to high-severity CVEs
-- **Attack path correlation**: Link multiple low-severity findings into high-impact chains
+## Phase 3: New `vapt-workflow-engine` Edge Function
+Dedicated edge function implementing the differential fuzzing and false-positive elimination logic that can't run in the browser.
 
-### Implementation Order:
-1. Fix AttackVisualization timeline (quick win, high visibility)
-2. Enhance the continuous-red-team-agent edge function with spider mode + retry logic
-3. Add OWASP/CVE mapping to scan orchestrator
-4. Improve recon depth in the scanning pipeline
-5. Enhance reporting output
+## Phase 4: Update Dashboard UI
+- New unified workflow view showing the 7 phases with progress
+- Each phase shows real findings, not simulated data
+- Findings display includes PoC scripts and remediation
+
+## Implementation Order
+1. Create `vapt-workflow-engine` edge function (core logic)
+2. Consolidate UI modules
+3. Wire consolidated UI to new edge function
+4. Update Sidebar navigation

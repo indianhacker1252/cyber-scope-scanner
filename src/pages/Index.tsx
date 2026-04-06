@@ -37,6 +37,7 @@ import MutationMatrix from "@/components/dashboard/MutationMatrix";
 import AttackSurfaceMatrix from "@/components/dashboard/AttackSurfaceMatrix";
 import ValidationWorkspace from "@/components/dashboard/ValidationWorkspace";
 import SystemHealthDashboard from "@/components/dashboard/SystemHealthDashboard";
+import VAPTWorkflow from "@/components/dashboard/VAPTWorkflow";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -47,6 +48,8 @@ const Index = () => {
         return <DashboardOverview />;
       case "target":
         return <TargetInput onNavigateToResults={() => setActiveSection("scan-results")} />;
+      case "vapt-workflow":
+        return <VAPTWorkflow />;
       case "ai-hub":
         return <AIHub />;
       case "ai-learning":
