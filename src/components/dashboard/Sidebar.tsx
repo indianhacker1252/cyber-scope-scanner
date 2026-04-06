@@ -44,6 +44,7 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
   const mainSections = [
     { id: "dashboard", label: "Dashboard", icon: Activity },
     { id: "target", label: "Target Input", icon: Target },
+    { id: "vapt-workflow", label: "⚡ VAPT Workflow", icon: Target },
   ];
 
   const sectionGroups: SectionGroup[] = [
