@@ -20,17 +20,8 @@ import AgentManagement from "@/components/dashboard/AgentManagement";
 import VAPTReports from "@/components/dashboard/VAPTReports";
 import { ThreatIntelligence } from "@/components/security/ThreatIntelligence";
 import { SecurityAdvisor } from "@/components/security/SecurityAdvisor";
-import AttackVisualization from "@/components/dashboard/AttackVisualization";
 import { WebHackersWeapons } from "@/components/dashboard/WebHackersWeapons";
-import AIHub from "@/components/dashboard/AIHub";
-import AILearningDashboard from "@/components/dashboard/AILearningDashboard";
-import AIPayloadEngine from "@/components/dashboard/AIPayloadEngine";
-import ScanningHub from "@/components/dashboard/ScanningHub";
-import SecurityTestingHub from "@/components/dashboard/SecurityTestingHub";
-import ApexSentinel from "@/components/dashboard/ApexSentinel";
 import ContinuousRedTeamAgent from "@/components/dashboard/ContinuousRedTeamAgent";
-import MutationMatrix from "@/components/dashboard/MutationMatrix";
-import AttackSurfaceMatrix from "@/components/dashboard/AttackSurfaceMatrix";
 import ValidationWorkspace from "@/components/dashboard/ValidationWorkspace";
 import SystemHealthDashboard from "@/components/dashboard/SystemHealthDashboard";
 
@@ -43,30 +34,12 @@ const Index = () => {
         return <DashboardOverview />;
       case "target":
         return <TargetInput onNavigateToResults={() => setActiveSection("scan-results")} />;
-      case "ai-hub":
-        return <AIHub />;
-      case "ai-learning":
-        return <AILearningDashboard />;
-      case "ai-payload-engine":
-        return <AIPayloadEngine />;
-      case "apex-sentinel":
-        return <ApexSentinel />;
       case "continuous-red-team":
         return <ContinuousRedTeamAgent />;
-      case "mutation-matrix":
-        return <MutationMatrix />;
-      case "attack-surface-matrix":
-        return <AttackSurfaceMatrix />;
       case "threat-intel":
         return <ThreatIntelligence />;
       case "security-advisor":
         return <SecurityAdvisor />;
-      case "attack-visualization":
-        return <AttackVisualization />;
-      case "scanning-hub":
-        return <ScanningHub />;
-      case "security-testing-hub":
-        return <SecurityTestingHub />;
       case "validation-workspace":
         return <ValidationWorkspace />;
       case "system-health":
