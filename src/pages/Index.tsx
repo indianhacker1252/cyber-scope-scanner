@@ -18,7 +18,6 @@ import Reports from "@/components/dashboard/Reports";
 import ToolManagement from "@/components/dashboard/ToolManagement";
 import AgentManagement from "@/components/dashboard/AgentManagement";
 import VAPTReports from "@/components/dashboard/VAPTReports";
-import { AutomatedVAPT } from "@/components/dashboard/AutomatedVAPT";
 import { ThreatIntelligence } from "@/components/security/ThreatIntelligence";
 import { SecurityAdvisor } from "@/components/security/SecurityAdvisor";
 import AttackVisualization from "@/components/dashboard/AttackVisualization";
@@ -27,17 +26,13 @@ import AIHub from "@/components/dashboard/AIHub";
 import AILearningDashboard from "@/components/dashboard/AILearningDashboard";
 import AIPayloadEngine from "@/components/dashboard/AIPayloadEngine";
 import ScanningHub from "@/components/dashboard/ScanningHub";
-import ScopeDiscovery from "@/components/dashboard/ScopeDiscovery";
-import AttackSurfaceMapping from "@/components/dashboard/AttackSurfaceMapping";
 import SecurityTestingHub from "@/components/dashboard/SecurityTestingHub";
-import VulnerabilityEngine from "@/components/dashboard/VulnerabilityEngine";
 import ApexSentinel from "@/components/dashboard/ApexSentinel";
 import ContinuousRedTeamAgent from "@/components/dashboard/ContinuousRedTeamAgent";
 import MutationMatrix from "@/components/dashboard/MutationMatrix";
 import AttackSurfaceMatrix from "@/components/dashboard/AttackSurfaceMatrix";
 import ValidationWorkspace from "@/components/dashboard/ValidationWorkspace";
 import SystemHealthDashboard from "@/components/dashboard/SystemHealthDashboard";
-import VAPTWorkflow from "@/components/dashboard/VAPTWorkflow";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -48,8 +43,6 @@ const Index = () => {
         return <DashboardOverview />;
       case "target":
         return <TargetInput onNavigateToResults={() => setActiveSection("scan-results")} />;
-      case "vapt-workflow":
-        return <VAPTWorkflow />;
       case "ai-hub":
         return <AIHub />;
       case "ai-learning":
@@ -72,16 +65,8 @@ const Index = () => {
         return <AttackVisualization />;
       case "scanning-hub":
         return <ScanningHub />;
-      case "scope-discovery":
-        return <ScopeDiscovery />;
-      case "attack-surface":
-        return <AttackSurfaceMapping />;
-      case "vapt-auto":
-        return <AutomatedVAPT />;
       case "security-testing-hub":
         return <SecurityTestingHub />;
-      case "vulnerability-engine":
-        return <VulnerabilityEngine />;
       case "validation-workspace":
         return <ValidationWorkspace />;
       case "system-health":
