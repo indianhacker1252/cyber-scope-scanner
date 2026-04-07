@@ -3,7 +3,6 @@ import {
   Activity, 
   Target, 
   Brain, 
-  Search,
   Shield,
   FileText,
   Settings,
@@ -32,9 +31,8 @@ interface SectionGroup {
 
 const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    "ai-hub": true,
-    "scanning-hub": true,
-    "security-testing": true
+    "operations": true,
+    "intel": true,
   });
 
   const toggleGroup = (groupId: string) => {
@@ -44,40 +42,17 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
   const mainSections = [
     { id: "dashboard", label: "Dashboard", icon: Activity },
     { id: "target", label: "Target Input", icon: Target },
-    
+    { id: "continuous-red-team", label: "⚡ VAPT Engine", icon: Brain },
   ];
 
   const sectionGroups: SectionGroup[] = [
     {
-      id: "ai-hub",
-      label: "🧠 AI Hub",
-      icon: Brain,
-      items: [
-        { id: "ai-hub", label: "AI Overview" },
-        { id: "ai-learning", label: "AI Learning Dashboard" },
-        { id: "ai-payload-engine", label: "AI Payload Engine" },
-        { id: "apex-sentinel", label: "Apex Sentinel" },
-        { id: "continuous-red-team", label: "Continuous Red Team" },
-        { id: "attack-surface-matrix", label: "Attack Surface Matrix" },
-        { id: "attack-visualization", label: "Live Visualization" },
-        { id: "threat-intel", label: "Threat Intelligence" },
-        { id: "security-advisor", label: "Security Advisor" },
-      ]
-    },
-    {
-      id: "scanning-hub",
-      label: "🔍 Scanning Hub",
-      icon: Search,
-      items: [
-        { id: "scanning-hub", label: "Scanning Overview" },
-      ]
-    },
-    {
-      id: "security-testing",
-      label: "🛡️ Security Testing",
+      id: "intel",
+      label: "🛡️ Intelligence",
       icon: Shield,
       items: [
-        { id: "security-testing-hub", label: "Testing Overview" },
+        { id: "threat-intel", label: "Threat Intelligence" },
+        { id: "security-advisor", label: "Security Advisor" },
         { id: "webhackers-weapons", label: "WebHackers Arsenal" },
         { id: "validation-workspace", label: "Validation Workspace" },
         { id: "system-health", label: "System Health" },
@@ -107,7 +82,6 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
   return (
     <aside className="w-64 bg-card border-r border-border p-4 overflow-y-auto max-h-[calc(100vh-80px)]">
       <nav className="space-y-1">
-        {/* Main Sections */}
         {mainSections.map((section) => {
           const Icon = section.icon;
           return (
@@ -130,7 +104,6 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
           <div className="border-t border-border" />
         </div>
 
-        {/* Grouped Sections with Collapsible */}
         {sectionGroups.map((group) => {
           const Icon = group.icon;
           const isOpen = openGroups[group.id];
@@ -184,7 +157,6 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
           <div className="border-t border-border" />
         </div>
 
-        {/* Other Sections */}
         {otherSections.map((section) => {
           const Icon = section.icon;
           return (
@@ -207,7 +179,6 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
           <div className="border-t border-border" />
         </div>
 
-        {/* Management Sections */}
         <p className="text-xs text-muted-foreground px-2 py-1 uppercase tracking-wider">
           Management
         </p>

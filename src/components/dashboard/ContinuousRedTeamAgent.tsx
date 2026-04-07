@@ -178,7 +178,7 @@ const ContinuousRedTeamAgent = () => {
   // Fetch mutation attempts
   const fetchMutationAttempts = useCallback(async () => {
     const { data } = await supabase.from('mutation_attempts').select('*')
-      .order('created_at', { ascending: false }).limit(100);
+      .order('created_at', { ascending: false }).limit(500);
     if (data) setMutationAttempts(data as MutationAttempt[]);
   }, []);
 
@@ -484,13 +484,35 @@ const ContinuousRedTeamAgent = () => {
         }
       }
 
-      // Step 5: Mutation Validation Phase
+      // Step 5: Deep Recursive AI Scan (the differentiator - goes deeper than surface scanners)
+      addOutput(`\n━━━ AI DEEP RECURSIVE SCAN ━━━`, 'info');
+      addAIThought(`Activating deep recursive scan — AI will generate context-aware payloads for every discovered parameter and test ALL OWASP Top 10 categories with mutation retry until valid bugs found. This goes deeper than any surface scanner.`, ['deep-scan', 'owasp-full', 'mutation-retry']);
+      setStatus(prev => ({ ...prev, phase: 'deep-recursive-scan', progress: 75 }));
+
+      try {
+        const { data: deepResult } = await supabase.functions.invoke('continuous-red-team-agent', {
+          body: { action: 'deep-recursive-scan', data: { target, maxRounds: 5, techStack: detectedTech } }
+        });
+        if (deepResult?.findings?.length > 0) {
+          deepResult.findings.forEach((f: Finding) => {
+            if (!allFindings.some(af => af.title === f.title && af.type === f.type)) allFindings.push(f);
+          });
+          addOutput(`Deep scan: ${deepResult.findings.length} findings from ${deepResult.total_payloads_fired} payloads across ${deepResult.total_params_tested} params`, 'success');
+          if (deepResult.output) {
+            deepResult.output.filter((l: string) => l.includes('✅')).forEach((l: string) => addOutput(l, 'success'));
+          }
+        } else {
+          addOutput(`Deep scan: No additional findings (target has strong input validation)`, 'warning');
+        }
+      } catch (e: any) {
+        addOutput(`Deep scan error: ${e.message}`, 'error');
+      }
+
+      // Step 6: Mutation Validation Phase
       if (allFindings.filter(f => (f.severity === 'critical' || f.severity === 'high') && f.exploitable).length > 0) {
         addOutput(`\n━━━ MUTATION VALIDATION ENGINE ━━━`, 'info');
         addAIThought(`Activating Mutation Matrix — firing CVE-mapped payloads against ${allFindings.filter(f => f.exploitable).length} exploitable findings to confirm with WAF evasion retry loop.`, ['mutation-validation', 'cve-mapping']);
-        setStatus(prev => ({ ...prev, phase: 'mutation-validation', progress: 85 }));
-        // The continuous operation already runs mutation validation server-side
-        // Mutation results appear in realtime via mutation_attempts subscription
+        setStatus(prev => ({ ...prev, phase: 'mutation-validation', progress: 88 }));
         addOutput(`Mutation validation running server-side (results stream via realtime)...`, 'info');
       }
 
