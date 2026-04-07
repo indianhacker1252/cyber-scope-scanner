@@ -178,7 +178,7 @@ const ContinuousRedTeamAgent = () => {
   // Fetch mutation attempts
   const fetchMutationAttempts = useCallback(async () => {
     const { data } = await supabase.from('mutation_attempts').select('*')
-      .order('created_at', { ascending: false }).limit(100);
+      .order('created_at', { ascending: false }).limit(500);
     if (data) setMutationAttempts(data as MutationAttempt[]);
   }, []);
 
