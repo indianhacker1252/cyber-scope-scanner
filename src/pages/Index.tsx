@@ -30,7 +30,7 @@ import ScanningHub from "@/components/dashboard/ScanningHub";
 import ScopeDiscovery from "@/components/dashboard/ScopeDiscovery";
 import AttackSurfaceMapping from "@/components/dashboard/AttackSurfaceMapping";
 import SecurityTestingHub from "@/components/dashboard/SecurityTestingHub";
-import VulnerabilityEngine from "@/components/dashboard/VulnerabilityEngine";
+
 import ApexSentinel from "@/components/dashboard/ApexSentinel";
 import ContinuousRedTeamAgent from "@/components/dashboard/ContinuousRedTeamAgent";
 import MutationMatrix from "@/components/dashboard/MutationMatrix";
