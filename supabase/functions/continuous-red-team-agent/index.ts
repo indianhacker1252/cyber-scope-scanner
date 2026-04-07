@@ -596,10 +596,19 @@ serve(async (req) => {
       }
 
       case 'spider-crawl': {
-        // Deep spider mode: crawl all endpoints, params, subdomains
         const { target: spiderTarget, depth = 3 } = data;
         const spiderResult = await spiderCrawlTarget(spiderTarget, depth, authHeader, supabase, userId);
         return new Response(JSON.stringify({ success: true, ...spiderResult }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      case 'deep-recursive-scan': {
+        // AI-driven deep recursive scanning - tests every param on every endpoint
+        // with mutation retry until valid bug found or exhausted
+        const { target: deepTarget, maxRounds = 10, techStack: deepTech = [] } = data;
+        const deepResult = await deepRecursiveScan(deepTarget, maxRounds, deepTech, authHeader, supabase, userId);
+        return new Response(JSON.stringify({ success: true, ...deepResult }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
