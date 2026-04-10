@@ -1276,7 +1276,7 @@ const ContinuousRedTeamAgent = () => {
         </div>
       </div>
 
-      {/* POC Detail Modal */}
+      {/* Finding Detail Modal */}
       <Dialog open={pocModalOpen} onOpenChange={setPocModalOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -1285,38 +1285,80 @@ const ContinuousRedTeamAgent = () => {
               {selectedFinding && (
                 <>
                   <Badge className={getSeverityColor(selectedFinding.severity)}>{selectedFinding.severity}</Badge>
+                  {selectedFinding.exploit_confirmed && <Badge variant="outline" className="border-red-500/40 text-red-400">🔓 Exploit Confirmed</Badge>}
                   {selectedFinding.verified === true && <Badge variant="outline" className="border-green-500/40 text-green-400">✅ Dual-Verified</Badge>}
                   {selectedFinding.verified === false && <Badge variant="outline" className="border-yellow-500/40 text-yellow-400">⚠️ Unverified</Badge>}
                   {selectedFinding.confidence !== undefined && <Badge variant="outline">Confidence: {Math.round(selectedFinding.confidence * 100)}%</Badge>}
+                  {selectedFinding.cve_id && <Badge variant="outline" className="font-mono text-xs">{selectedFinding.cve_id}</Badge>}
                 </>
               )}
             </DialogDescription>
           </DialogHeader>
           {selectedFinding && (
             <div className="space-y-4 mt-2">
+              {/* Re-verify Button */}
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => reverifyFinding(selectedFinding)} 
+                  disabled={reverifying}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  {reverifying ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  {reverifying ? 'Re-verifying...' : 'Re-verify Finding'}
+                </Button>
+                {selectedFinding.evidence?.raw?.poc && (
+                  <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(selectedFinding.evidence.raw.poc)} className="gap-1">
+                    <Code2 className="h-4 w-4" />Copy PoC
+                  </Button>
+                )}
+              </div>
+
               <div><h4 className="text-sm font-semibold mb-1">Description</h4><p className="text-sm text-muted-foreground">{selectedFinding.description}</p></div>
-              {selectedFinding.evidence?.raw?.poc && (
+              
+              {/* PoC Section */}
+              {(selectedFinding.evidence?.raw?.poc || selectedFinding.poc_data) && (
                 <div>
                   <h4 className="text-sm font-semibold mb-1 flex items-center gap-1"><Code2 className="h-4 w-4 text-primary" />Proof of Concept</h4>
-                  <pre className="p-3 bg-black/60 rounded-lg text-xs font-mono text-green-300 overflow-x-auto whitespace-pre-wrap border border-green-500/20 max-h-48">{selectedFinding.evidence.raw.poc}</pre>
+                  <pre className="p-3 bg-black/60 rounded-lg text-xs font-mono text-green-300 overflow-x-auto whitespace-pre-wrap border border-green-500/20 max-h-48">
+                    {selectedFinding.evidence?.raw?.poc || selectedFinding.poc_data}
+                  </pre>
                 </div>
               )}
+
+              {/* HTTP Request/Response */}
+              {selectedFinding.evidence?.raw?.request && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">HTTP Request</h4>
+                  <pre className="p-3 bg-black/40 rounded-lg text-xs font-mono text-cyan-300 overflow-x-auto whitespace-pre-wrap border border-cyan-500/20 max-h-32">{selectedFinding.evidence.raw.request}</pre>
+                </div>
+              )}
+              {selectedFinding.evidence?.raw?.response && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">HTTP Response</h4>
+                  <pre className="p-3 bg-black/40 rounded-lg text-xs font-mono text-orange-300 overflow-x-auto whitespace-pre-wrap border border-orange-500/20 max-h-32">{selectedFinding.evidence.raw.response}</pre>
+                </div>
+              )}
+
               {selectedFinding.evidence?.raw?.remediation && (
                 <div>
                   <h4 className="text-sm font-semibold mb-1 flex items-center gap-1"><Shield className="h-4 w-4 text-blue-400" />Remediation</h4>
                   <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg text-sm text-muted-foreground whitespace-pre-wrap">{selectedFinding.evidence.raw.remediation}</div>
                 </div>
               )}
+
               <div>
-                <h4 className="text-sm font-semibold mb-1">Evidence</h4>
+                <h4 className="text-sm font-semibold mb-1">Evidence Details</h4>
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   {[
                     { label: 'Tool', value: selectedFinding.tool_used },
                     { label: 'Phase', value: selectedFinding.phase },
+                    { label: 'Type', value: selectedFinding.type },
                     { label: 'Time', value: new Date(selectedFinding.timestamp).toLocaleString() },
                     { label: 'Exploitable', value: selectedFinding.exploitable ? 'Yes ⚠️' : 'No' },
-                    { label: 'Verified', value: selectedFinding.verified ? 'Dual-verified' : 'Single' },
+                    { label: 'Verified', value: selectedFinding.verified ? 'Dual-verified ✅' : 'Single check' },
                     { label: 'Target', value: selectedFinding.evidence?.target || selectedFinding.subdomain || target },
+                    { label: 'CVE', value: selectedFinding.cve_id || 'N/A' },
                   ].map(item => (
                     <div key={item.label} className="p-2 bg-muted/30 rounded">
                       <span className="text-muted-foreground">{item.label}: </span><span className="font-medium">{item.value}</span>
@@ -1324,10 +1366,21 @@ const ContinuousRedTeamAgent = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Raw Evidence JSON */}
+              {selectedFinding.evidence && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Raw Evidence JSON</summary>
+                  <pre className="p-3 bg-black/40 rounded-lg font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap mt-1 max-h-48">
+                    {JSON.stringify(selectedFinding.evidence, null, 2)}
+                  </pre>
+                </details>
+              )}
+
               {selectedFinding.verified === false && (
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex gap-2">
                   <AlertTriangle className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
-                  <div className="text-sm text-yellow-300"><strong>Possible False Positive:</strong> Not confirmed by secondary technique. Confidence: {Math.round((selectedFinding.confidence || 0.45) * 100)}%.</div>
+                  <div className="text-sm text-yellow-300"><strong>Possible False Positive:</strong> Not confirmed by secondary technique. Click "Re-verify" to test again.</div>
                 </div>
               )}
               {selectedFinding.verified === true && (
