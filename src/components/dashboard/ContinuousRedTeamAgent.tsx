@@ -581,6 +581,36 @@ const ContinuousRedTeamAgent = () => {
 
   const openPocModal = (finding: Finding) => { setSelectedFinding(finding); setPocModalOpen(true); };
 
+  const reverifyFinding = async (finding: Finding) => {
+    setReverifying(true);
+    addOutput(`🔄 Re-verifying: ${finding.title}...`, 'info');
+    try {
+      const { data, error } = await supabase.functions.invoke('continuous-red-team-agent', {
+        body: { action: 'reverify-finding', data: { target: finding.subdomain || target, finding: { type: finding.type, title: finding.title, tool_used: finding.tool_used, evidence: finding.evidence, severity: finding.severity } } }
+      });
+      if (error) throw error;
+      if (data?.verified) {
+        finding.verified = true;
+        finding.confidence = data.confidence || 0.95;
+        finding.exploit_confirmed = data.exploit_confirmed || false;
+        if (data.poc_data) finding.evidence = { ...finding.evidence, raw: { ...finding.evidence?.raw, poc: data.poc_data } };
+        setStatus(prev => ({ ...prev, findings: [...prev.findings] }));
+        toast({ title: "✅ Finding Confirmed", description: `${finding.title} re-verified successfully` });
+        addOutput(`✅ Re-verified: ${finding.title} (confidence: ${Math.round((data.confidence || 0.95) * 100)}%)`, 'success');
+      } else {
+        finding.verified = false;
+        finding.confidence = data.confidence || 0.3;
+        setStatus(prev => ({ ...prev, findings: [...prev.findings] }));
+        toast({ title: "⚠️ Not Confirmed", description: `${finding.title} could not be re-verified`, variant: "destructive" });
+        addOutput(`⚠️ Re-verify failed: ${finding.title} — may be false positive`, 'warning');
+      }
+    } catch (e: any) {
+      toast({ title: "Re-verify Error", description: e.message, variant: "destructive" });
+      addOutput(`❌ Re-verify error: ${e.message}`, 'error');
+    }
+    setReverifying(false);
+  };
+
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'critical': return 'bg-red-500/20 text-red-400 border-red-500/30';
