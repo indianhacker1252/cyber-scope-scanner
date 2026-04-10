@@ -139,6 +139,7 @@ const ContinuousRedTeamAgent = () => {
   const [dedFilterType, setDedFilterType] = useState<'all' | 'cors' | 'traversal' | 'cookie'>('all');
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [pocModalOpen, setPocModalOpen] = useState(false);
+  const [reverifying, setReverifying] = useState(false);
   const [liveOutput, setLiveOutput] = useState<string[]>([]);
   const outputRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState("control");
