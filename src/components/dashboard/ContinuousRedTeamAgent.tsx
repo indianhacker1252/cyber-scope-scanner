@@ -469,7 +469,7 @@ const ContinuousRedTeamAgent = () => {
 
       const sdStart = Date.now();
       const { data: fullOp, error: fullError } = await supabase.functions.invoke('continuous-red-team-agent', {
-        body: { action: 'start-continuous-operation', data: { target, objective, max_iterations: 5 } }
+        body: { action: 'start-continuous-operation', data: { target, objective, max_iterations: 5, background: true } }
       });
 
       if (!fullError && fullOp?.findings) {
