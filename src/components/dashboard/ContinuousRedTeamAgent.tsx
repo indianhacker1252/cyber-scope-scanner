@@ -607,7 +607,10 @@ const ContinuousRedTeamAgent = () => {
   });
 
   const FindingCard = ({ finding, showPoc = true }: { finding: Finding; showPoc?: boolean }) => (
-    <div className={`p-3 border rounded-lg bg-card/50 ${finding.verified === false ? 'border-yellow-500/30 opacity-80' : 'border-border'}`}>
+    <div 
+      className={`p-3 border rounded-lg bg-card/50 cursor-pointer hover:bg-card/80 transition-colors ${finding.verified === false ? 'border-yellow-500/30 opacity-80' : 'border-border'}`}
+      onClick={() => openPocModal(finding)}
+    >
       <div className="flex items-start justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className="font-medium text-sm truncate">{finding.title}</span>
@@ -628,11 +631,9 @@ const ContinuousRedTeamAgent = () => {
             Confidence: {Math.round(finding.confidence * 100)}%
           </span>
         )}
-        {showPoc && finding.evidence?.raw?.poc && (
-          <Button variant="outline" size="sm" className="text-xs h-5 px-2 ml-auto" onClick={() => openPocModal(finding)}>
-            <Code2 className="h-3 w-3 mr-1" />View POC
-          </Button>
-        )}
+        <Badge variant="outline" className="text-xs h-5 px-2 ml-auto">
+          <Eye className="h-3 w-3 mr-1" />Click for details
+        </Badge>
       </div>
     </div>
   );

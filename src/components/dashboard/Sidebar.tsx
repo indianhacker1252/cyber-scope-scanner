@@ -80,7 +80,7 @@ const Sidebar = ({ activeSection, onSectionChange }: SidebarProps) => {
     group.items?.some(item => activeSection === item.id) || activeSection === group.id;
 
   return (
-    <aside className="w-64 bg-card border-r border-border p-4 overflow-y-auto max-h-[calc(100vh-80px)]">
+    <aside className="w-64 bg-card border-r border-border p-4 overflow-y-auto sticky top-0 h-screen">
       <nav className="space-y-1">
         {mainSections.map((section) => {
           const Icon = section.icon;
