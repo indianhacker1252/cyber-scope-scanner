@@ -472,7 +472,36 @@ const ContinuousRedTeamAgent = () => {
         body: { action: 'start-continuous-operation', data: { target, objective, max_iterations: 5, background: true } }
       });
 
-      if (!fullError && fullOp?.findings) {
+      if (!fullError && fullOp?.session_id && fullOp?.status === 'processing') {
+        // Background scan started — poll for results
+        addOutput(`Subdomain scan running in background (session: ${fullOp.session_id.slice(0, 8)}...)`, 'info');
+        let pollCount = 0;
+        const maxPolls = 30;
+        while (pollCount < maxPolls) {
+          await new Promise(r => setTimeout(r, 5000));
+          pollCount++;
+          const { data: pollData } = await supabase.functions.invoke('continuous-red-team-agent', {
+            body: { action: 'poll-session', data: { session_id: fullOp.session_id } }
+          });
+          if (pollData?.status === 'completed' && pollData?.findings) {
+            const subFindings = pollData.findings.filter((f: any) => f.subdomain);
+            const primaryFindings = pollData.findings.filter((f: any) => !f.subdomain);
+            primaryFindings.forEach((f: Finding) => {
+              if (!allFindings.some(af => af.title === f.title && af.type === f.type)) allFindings.push(f);
+            });
+            if (subFindings.length > 0) {
+              allFindings.push(...subFindings);
+              addOutput(`Subdomain scan complete: ${subFindings.length} findings`, 'success');
+              buildSubdomainMap(allFindings);
+            }
+            break;
+          } else if (pollData?.status === 'failed') {
+            addOutput(`Subdomain background scan failed`, 'warning');
+            break;
+          }
+          addOutput(`Polling background scan... (${pollCount}/${maxPolls})`, 'info');
+        }
+      } else if (!fullError && fullOp?.findings) {
         const subFindings = fullOp.findings.filter((f: any) => f.subdomain);
         const primaryFindings = fullOp.findings.filter((f: any) => !f.subdomain);
         primaryFindings.forEach((f: Finding) => {
