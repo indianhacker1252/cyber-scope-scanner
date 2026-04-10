@@ -32,6 +32,7 @@ interface Finding {
   title: string; description: string; evidence: any; timestamp: string;
   phase: string; tool_used: string; exploitable: boolean;
   confidence?: number; verified?: boolean; subdomain?: string;
+  exploit_confirmed?: boolean; poc_data?: string; cve_id?: string;
 }
 
 interface SubdomainEntry {
