@@ -32,6 +32,7 @@ interface Finding {
   title: string; description: string; evidence: any; timestamp: string;
   phase: string; tool_used: string; exploitable: boolean;
   confidence?: number; verified?: boolean; subdomain?: string;
+  exploit_confirmed?: boolean; poc_data?: string; cve_id?: string;
 }
 
 interface SubdomainEntry {
@@ -139,6 +140,7 @@ const ContinuousRedTeamAgent = () => {
   const [dedFilterType, setDedFilterType] = useState<'all' | 'cors' | 'traversal' | 'cookie'>('all');
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [pocModalOpen, setPocModalOpen] = useState(false);
+  const [reverifying, setReverifying] = useState(false);
   const [liveOutput, setLiveOutput] = useState<string[]>([]);
   const outputRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState("control");
@@ -467,10 +469,39 @@ const ContinuousRedTeamAgent = () => {
 
       const sdStart = Date.now();
       const { data: fullOp, error: fullError } = await supabase.functions.invoke('continuous-red-team-agent', {
-        body: { action: 'start-continuous-operation', data: { target, objective, max_iterations: 5 } }
+        body: { action: 'start-continuous-operation', data: { target, objective, max_iterations: 5, background: true } }
       });
 
-      if (!fullError && fullOp?.findings) {
+      if (!fullError && fullOp?.session_id && fullOp?.status === 'processing') {
+        // Background scan started — poll for results
+        addOutput(`Subdomain scan running in background (session: ${fullOp.session_id.slice(0, 8)}...)`, 'info');
+        let pollCount = 0;
+        const maxPolls = 30;
+        while (pollCount < maxPolls) {
+          await new Promise(r => setTimeout(r, 5000));
+          pollCount++;
+          const { data: pollData } = await supabase.functions.invoke('continuous-red-team-agent', {
+            body: { action: 'poll-session', data: { session_id: fullOp.session_id } }
+          });
+          if (pollData?.status === 'completed' && pollData?.findings) {
+            const subFindings = pollData.findings.filter((f: any) => f.subdomain);
+            const primaryFindings = pollData.findings.filter((f: any) => !f.subdomain);
+            primaryFindings.forEach((f: Finding) => {
+              if (!allFindings.some(af => af.title === f.title && af.type === f.type)) allFindings.push(f);
+            });
+            if (subFindings.length > 0) {
+              allFindings.push(...subFindings);
+              addOutput(`Subdomain scan complete: ${subFindings.length} findings`, 'success');
+              buildSubdomainMap(allFindings);
+            }
+            break;
+          } else if (pollData?.status === 'failed') {
+            addOutput(`Subdomain background scan failed`, 'warning');
+            break;
+          }
+          addOutput(`Polling background scan... (${pollCount}/${maxPolls})`, 'info');
+        }
+      } else if (!fullError && fullOp?.findings) {
         const subFindings = fullOp.findings.filter((f: any) => f.subdomain);
         const primaryFindings = fullOp.findings.filter((f: any) => !f.subdomain);
         primaryFindings.forEach((f: Finding) => {
@@ -580,6 +611,36 @@ const ContinuousRedTeamAgent = () => {
 
   const openPocModal = (finding: Finding) => { setSelectedFinding(finding); setPocModalOpen(true); };
 
+  const reverifyFinding = async (finding: Finding) => {
+    setReverifying(true);
+    addOutput(`🔄 Re-verifying: ${finding.title}...`, 'info');
+    try {
+      const { data, error } = await supabase.functions.invoke('continuous-red-team-agent', {
+        body: { action: 'reverify-finding', data: { target: finding.subdomain || target, finding: { type: finding.type, title: finding.title, tool_used: finding.tool_used, evidence: finding.evidence, severity: finding.severity } } }
+      });
+      if (error) throw error;
+      if (data?.verified) {
+        finding.verified = true;
+        finding.confidence = data.confidence || 0.95;
+        finding.exploit_confirmed = data.exploit_confirmed || false;
+        if (data.poc_data) finding.evidence = { ...finding.evidence, raw: { ...finding.evidence?.raw, poc: data.poc_data } };
+        setStatus(prev => ({ ...prev, findings: [...prev.findings] }));
+        toast({ title: "✅ Finding Confirmed", description: `${finding.title} re-verified successfully` });
+        addOutput(`✅ Re-verified: ${finding.title} (confidence: ${Math.round((data.confidence || 0.95) * 100)}%)`, 'success');
+      } else {
+        finding.verified = false;
+        finding.confidence = data.confidence || 0.3;
+        setStatus(prev => ({ ...prev, findings: [...prev.findings] }));
+        toast({ title: "⚠️ Not Confirmed", description: `${finding.title} could not be re-verified`, variant: "destructive" });
+        addOutput(`⚠️ Re-verify failed: ${finding.title} — may be false positive`, 'warning');
+      }
+    } catch (e: any) {
+      toast({ title: "Re-verify Error", description: e.message, variant: "destructive" });
+      addOutput(`❌ Re-verify error: ${e.message}`, 'error');
+    }
+    setReverifying(false);
+  };
+
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'critical': return 'bg-red-500/20 text-red-400 border-red-500/30';
@@ -607,7 +668,10 @@ const ContinuousRedTeamAgent = () => {
   });
 
   const FindingCard = ({ finding, showPoc = true }: { finding: Finding; showPoc?: boolean }) => (
-    <div className={`p-3 border rounded-lg bg-card/50 ${finding.verified === false ? 'border-yellow-500/30 opacity-80' : 'border-border'}`}>
+    <div 
+      className={`p-3 border rounded-lg bg-card/50 cursor-pointer hover:bg-card/80 transition-colors ${finding.verified === false ? 'border-yellow-500/30 opacity-80' : 'border-border'}`}
+      onClick={() => openPocModal(finding)}
+    >
       <div className="flex items-start justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className="font-medium text-sm truncate">{finding.title}</span>
@@ -628,11 +692,9 @@ const ContinuousRedTeamAgent = () => {
             Confidence: {Math.round(finding.confidence * 100)}%
           </span>
         )}
-        {showPoc && finding.evidence?.raw?.poc && (
-          <Button variant="outline" size="sm" className="text-xs h-5 px-2 ml-auto" onClick={() => openPocModal(finding)}>
-            <Code2 className="h-3 w-3 mr-1" />View POC
-          </Button>
-        )}
+        <Badge variant="outline" className="text-xs h-5 px-2 ml-auto">
+          <Eye className="h-3 w-3 mr-1" />Click for details
+        </Badge>
       </div>
     </div>
   );
@@ -1243,7 +1305,7 @@ const ContinuousRedTeamAgent = () => {
         </div>
       </div>
 
-      {/* POC Detail Modal */}
+      {/* Finding Detail Modal */}
       <Dialog open={pocModalOpen} onOpenChange={setPocModalOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -1252,38 +1314,80 @@ const ContinuousRedTeamAgent = () => {
               {selectedFinding && (
                 <>
                   <Badge className={getSeverityColor(selectedFinding.severity)}>{selectedFinding.severity}</Badge>
+                  {selectedFinding.exploit_confirmed && <Badge variant="outline" className="border-red-500/40 text-red-400">🔓 Exploit Confirmed</Badge>}
                   {selectedFinding.verified === true && <Badge variant="outline" className="border-green-500/40 text-green-400">✅ Dual-Verified</Badge>}
                   {selectedFinding.verified === false && <Badge variant="outline" className="border-yellow-500/40 text-yellow-400">⚠️ Unverified</Badge>}
                   {selectedFinding.confidence !== undefined && <Badge variant="outline">Confidence: {Math.round(selectedFinding.confidence * 100)}%</Badge>}
+                  {selectedFinding.cve_id && <Badge variant="outline" className="font-mono text-xs">{selectedFinding.cve_id}</Badge>}
                 </>
               )}
             </DialogDescription>
           </DialogHeader>
           {selectedFinding && (
             <div className="space-y-4 mt-2">
+              {/* Re-verify Button */}
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => reverifyFinding(selectedFinding)} 
+                  disabled={reverifying}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  {reverifying ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  {reverifying ? 'Re-verifying...' : 'Re-verify Finding'}
+                </Button>
+                {selectedFinding.evidence?.raw?.poc && (
+                  <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(selectedFinding.evidence.raw.poc)} className="gap-1">
+                    <Code2 className="h-4 w-4" />Copy PoC
+                  </Button>
+                )}
+              </div>
+
               <div><h4 className="text-sm font-semibold mb-1">Description</h4><p className="text-sm text-muted-foreground">{selectedFinding.description}</p></div>
-              {selectedFinding.evidence?.raw?.poc && (
+              
+              {/* PoC Section */}
+              {(selectedFinding.evidence?.raw?.poc || selectedFinding.poc_data) && (
                 <div>
                   <h4 className="text-sm font-semibold mb-1 flex items-center gap-1"><Code2 className="h-4 w-4 text-primary" />Proof of Concept</h4>
-                  <pre className="p-3 bg-black/60 rounded-lg text-xs font-mono text-green-300 overflow-x-auto whitespace-pre-wrap border border-green-500/20 max-h-48">{selectedFinding.evidence.raw.poc}</pre>
+                  <pre className="p-3 bg-black/60 rounded-lg text-xs font-mono text-green-300 overflow-x-auto whitespace-pre-wrap border border-green-500/20 max-h-48">
+                    {selectedFinding.evidence?.raw?.poc || selectedFinding.poc_data}
+                  </pre>
                 </div>
               )}
+
+              {/* HTTP Request/Response */}
+              {selectedFinding.evidence?.raw?.request && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">HTTP Request</h4>
+                  <pre className="p-3 bg-black/40 rounded-lg text-xs font-mono text-cyan-300 overflow-x-auto whitespace-pre-wrap border border-cyan-500/20 max-h-32">{selectedFinding.evidence.raw.request}</pre>
+                </div>
+              )}
+              {selectedFinding.evidence?.raw?.response && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-1">HTTP Response</h4>
+                  <pre className="p-3 bg-black/40 rounded-lg text-xs font-mono text-orange-300 overflow-x-auto whitespace-pre-wrap border border-orange-500/20 max-h-32">{selectedFinding.evidence.raw.response}</pre>
+                </div>
+              )}
+
               {selectedFinding.evidence?.raw?.remediation && (
                 <div>
                   <h4 className="text-sm font-semibold mb-1 flex items-center gap-1"><Shield className="h-4 w-4 text-blue-400" />Remediation</h4>
                   <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg text-sm text-muted-foreground whitespace-pre-wrap">{selectedFinding.evidence.raw.remediation}</div>
                 </div>
               )}
+
               <div>
-                <h4 className="text-sm font-semibold mb-1">Evidence</h4>
+                <h4 className="text-sm font-semibold mb-1">Evidence Details</h4>
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   {[
                     { label: 'Tool', value: selectedFinding.tool_used },
                     { label: 'Phase', value: selectedFinding.phase },
+                    { label: 'Type', value: selectedFinding.type },
                     { label: 'Time', value: new Date(selectedFinding.timestamp).toLocaleString() },
                     { label: 'Exploitable', value: selectedFinding.exploitable ? 'Yes ⚠️' : 'No' },
-                    { label: 'Verified', value: selectedFinding.verified ? 'Dual-verified' : 'Single' },
+                    { label: 'Verified', value: selectedFinding.verified ? 'Dual-verified ✅' : 'Single check' },
                     { label: 'Target', value: selectedFinding.evidence?.target || selectedFinding.subdomain || target },
+                    { label: 'CVE', value: selectedFinding.cve_id || 'N/A' },
                   ].map(item => (
                     <div key={item.label} className="p-2 bg-muted/30 rounded">
                       <span className="text-muted-foreground">{item.label}: </span><span className="font-medium">{item.value}</span>
@@ -1291,10 +1395,21 @@ const ContinuousRedTeamAgent = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Raw Evidence JSON */}
+              {selectedFinding.evidence && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Raw Evidence JSON</summary>
+                  <pre className="p-3 bg-black/40 rounded-lg font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap mt-1 max-h-48">
+                    {JSON.stringify(selectedFinding.evidence, null, 2)}
+                  </pre>
+                </details>
+              )}
+
               {selectedFinding.verified === false && (
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex gap-2">
                   <AlertTriangle className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
-                  <div className="text-sm text-yellow-300"><strong>Possible False Positive:</strong> Not confirmed by secondary technique. Confidence: {Math.round((selectedFinding.confidence || 0.45) * 100)}%.</div>
+                  <div className="text-sm text-yellow-300"><strong>Possible False Positive:</strong> Not confirmed by secondary technique. Click "Re-verify" to test again.</div>
                 </div>
               )}
               {selectedFinding.verified === true && (
