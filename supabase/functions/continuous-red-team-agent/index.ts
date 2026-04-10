@@ -1619,6 +1619,12 @@ async function executeContinuousOperation(
   phaseOutputs['recon'] = reconResult.output;
   phaseOutputs['scanning'] = scanningResult.output;
 
+  // Phase 1.1: Google Dork Recon for deep endpoint discovery
+  console.log(`[Red Team] Phase 1.1: Google Dork Recon | Target: ${state.target}`);
+  const dorkResult = await googleDorkRecon(state.target, authHeader);
+  allFindings.push(...dorkResult.findings);
+  phaseOutputs['google-dork'] = dorkResult.output;
+
   // === NEW: Heuristic payload generation based on discovered parameters ===
   const discoveredParams = extractParametersFromFindings(allFindings);
   if (discoveredParams.length > 0) {
