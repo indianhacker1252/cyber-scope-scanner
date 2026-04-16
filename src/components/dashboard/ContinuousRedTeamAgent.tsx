@@ -903,7 +903,10 @@ const ContinuousRedTeamAgent = () => {
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Brain className="h-4 w-4 text-primary" />AI Reasoning — Live Thought Process
                   </CardTitle>
-                  <CardDescription className="text-xs">AI shares its thinking in real-time. You can correct it to avoid false positives.</CardDescription>
+                  <CardDescription className="text-xs">
+                    Send a target URL to start autonomous hunting, or correct AI reasoning during scans.
+                    <br/>Try: <span className="text-primary font-mono">example.com</span> or <span className="text-primary font-mono">hunt example.com for XSS</span>
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="flex-1 p-0 flex flex-col overflow-hidden">
                   <ScrollArea className="flex-1">
