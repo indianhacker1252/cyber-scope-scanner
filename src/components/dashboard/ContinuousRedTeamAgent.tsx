@@ -259,14 +259,76 @@ const ContinuousRedTeamAgent = () => {
     } catch { /* non-critical */ }
   };
 
-  // ===== SEND HUMAN CORRECTION =====
+  // ===== AI AUTONOMOUS HUNT =====
+  const [aiHunting, setAiHunting] = useState(false);
+
+  const startAIHunt = async (instruction: string) => {
+    const huntTarget = instruction.match(/(?:https?:\/\/)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)?.[0] || target;
+    if (!huntTarget) {
+      addAIThought("I need a target to hunt. Please provide a domain like 'example.com' or set the target in the Control tab.");
+      return;
+    }
+    if (huntTarget !== target && huntTarget) setTarget(huntTarget);
+    
+    setAiHunting(true);
+    setStatus(prev => ({ ...prev, isRunning: true, phase: 'ai-hunting' }));
+    addAIThought(`🎯 Starting autonomous bug hunt on ${huntTarget}. I'll think like a black-hat hacker and chain findings for maximum impact.`, ['recon', 'deep-scan', 'exploit-chain']);
+    addOutput(`🤖 AI Autonomous Hunt started on ${huntTarget}`, 'info');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('continuous-red-team-agent', {
+        body: { action: 'ai-hunt', data: { target: huntTarget, instruction, context: { detected_tech: detectedTech, detected_ports: detectedPorts } } }
+      });
+      if (error) throw error;
+
+      // Stream thoughts
+      if (data?.thoughts) {
+        data.thoughts.forEach((t: any) => addAIThought(t.thought, t.actions));
+      }
+      // Update findings
+      if (data?.findings?.length > 0) {
+        setStatus(prev => ({ ...prev, findings: [...prev.findings, ...data.findings] }));
+        buildSubdomainMap([...status.findings, ...data.findings]);
+        addOutput(`🏁 Hunt complete: ${data.findings.length} findings (${data.findings.filter((f: any) => f.severity === 'critical').length} critical)`, 'success');
+      }
+      // Update chains
+      if (data?.chains?.length > 0) {
+        setStatus(prev => ({ ...prev, attackChains: [...prev.attackChains, ...data.chains.map((c: any) => ({
+          id: crypto.randomUUID(), name: c.name, steps: [], success_probability: c.steps_completed / (c.findings?.length || 1),
+          impact: c.findings?.length > 0 ? 'Critical' : 'High', mitre_mapping: ['T1190', 'T1068']
+        }))] }));
+      }
+      toast({ title: "🤖 AI Hunt Complete", description: `Found ${data?.findings?.length || 0} vulnerabilities` });
+    } catch (e: any) {
+      addAIThought(`❌ Hunt error: ${e.message}. Check target accessibility.`);
+      toast({ title: "Hunt Failed", description: e.message, variant: "destructive" });
+    }
+    setAiHunting(false);
+    setStatus(prev => ({ ...prev, isRunning: false, phase: 'completed' }));
+  };
+
+  // ===== SEND HUMAN CORRECTION / AI COMMAND =====
   const sendHumanCorrection = async () => {
     if (!humanInput.trim()) return;
-    const correction = humanInput.trim();
+    const input = humanInput.trim();
     setHumanInput("");
-    setAiThoughts(prev => [...prev, { thought: correction, isHuman: true, timestamp: new Date().toLocaleTimeString() }]);
-    addOutput(`🧑 Human correction: ${correction}`, 'info');
-    await getAIThought(status.phase, { findings_count: status.findings.length, correction_applied: true }, correction);
+    setAiThoughts(prev => [...prev, { thought: input, isHuman: true, timestamp: new Date().toLocaleTimeString() }]);
+
+    // Check if user is sending a target or hunt command
+    const isHuntCommand = input.toLowerCase().includes('hunt') || input.toLowerCase().includes('scan') || 
+      input.toLowerCase().includes('test') || input.toLowerCase().includes('find bugs') ||
+      input.toLowerCase().includes('attack') || input.match(/^https?:\/\//) || input.match(/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/);
+
+    if (isHuntCommand && !status.isRunning) {
+      await startAIHunt(input);
+    } else if (status.isRunning) {
+      addOutput(`🧑 Human correction: ${input}`, 'info');
+      await getAIThought(status.phase, { findings_count: status.findings.length, correction_applied: true }, input);
+    } else {
+      // General AI question — pass to reasoning
+      addOutput(`🧑 Human input: ${input}`, 'info');
+      await getAIThought('idle', { findings_count: status.findings.length, query: input }, input);
+    }
   };
 
   // ===== UPDATE VULN KB =====
@@ -567,15 +629,29 @@ const ContinuousRedTeamAgent = () => {
         allFindings.push(...dedupedFindings);
       }
 
-      // Step 7: Correlation
+      // Step 7: Correlation + Exploit Chaining
       if (allFindings.length >= 2) {
-        addOutput(`\n━━━ CORRELATION ENGINE ━━━`, 'info');
-        addAIThought(`Correlating ${allFindings.length} findings to identify multi-stage attack paths and risk amplification patterns.`);
+        addOutput(`\n━━━ CORRELATION & EXPLOIT CHAINING ━━━`, 'info');
+        addAIThought(`Correlating ${allFindings.length} findings and executing exploit chains — IDOR→PrivEsc, SQLi→DataExfil, SSRF→InternalAccess...`, ['chain-engine']);
         const { data: corrData } = await supabase.functions.invoke('continuous-red-team-agent', {
           body: { action: 'correlate-findings', data: { findings: allFindings, target_context: { target } } }
         });
         if (corrData?.correlations) allCorrelations.push(...corrData.correlations);
         if (corrData?.attack_chains) allAttackChains.push(...corrData.attack_chains);
+
+        // Execute exploit chains
+        try {
+          const { data: chainData } = await supabase.functions.invoke('continuous-red-team-agent', {
+            body: { action: 'execute-exploit-chain', data: { target, findings: allFindings, techStack: detectedTech } }
+          });
+          if (chainData?.new_findings?.length > 0) {
+            allFindings.push(...chainData.new_findings);
+            addOutput(`🔗 Exploit chains: ${chainData.new_findings.length} new findings from ${chainData.chains_executed?.length || 0} chains`, 'success');
+            chainData.output?.filter((l: string) => l.includes('✅')).forEach((l: string) => addOutput(l, 'success'));
+          }
+        } catch (e: any) {
+          addOutput(`Chain engine error: ${e.message}`, 'warning');
+        }
       }
 
       const verifiedTotal = allFindings.filter(f => f.verified === true).length;
@@ -827,7 +903,10 @@ const ContinuousRedTeamAgent = () => {
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Brain className="h-4 w-4 text-primary" />AI Reasoning — Live Thought Process
                   </CardTitle>
-                  <CardDescription className="text-xs">AI shares its thinking in real-time. You can correct it to avoid false positives.</CardDescription>
+                  <CardDescription className="text-xs">
+                    Send a target URL to start autonomous hunting, or correct AI reasoning during scans.
+                    <br/>Try: <span className="text-primary font-mono">example.com</span> or <span className="text-primary font-mono">hunt example.com for XSS</span>
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="flex-1 p-0 flex flex-col overflow-hidden">
                   <ScrollArea className="flex-1">
