@@ -629,15 +629,29 @@ const ContinuousRedTeamAgent = () => {
         allFindings.push(...dedupedFindings);
       }
 
-      // Step 7: Correlation
+      // Step 7: Correlation + Exploit Chaining
       if (allFindings.length >= 2) {
-        addOutput(`\n━━━ CORRELATION ENGINE ━━━`, 'info');
-        addAIThought(`Correlating ${allFindings.length} findings to identify multi-stage attack paths and risk amplification patterns.`);
+        addOutput(`\n━━━ CORRELATION & EXPLOIT CHAINING ━━━`, 'info');
+        addAIThought(`Correlating ${allFindings.length} findings and executing exploit chains — IDOR→PrivEsc, SQLi→DataExfil, SSRF→InternalAccess...`, ['chain-engine']);
         const { data: corrData } = await supabase.functions.invoke('continuous-red-team-agent', {
           body: { action: 'correlate-findings', data: { findings: allFindings, target_context: { target } } }
         });
         if (corrData?.correlations) allCorrelations.push(...corrData.correlations);
         if (corrData?.attack_chains) allAttackChains.push(...corrData.attack_chains);
+
+        // Execute exploit chains
+        try {
+          const { data: chainData } = await supabase.functions.invoke('continuous-red-team-agent', {
+            body: { action: 'execute-exploit-chain', data: { target, findings: allFindings, techStack: detectedTech } }
+          });
+          if (chainData?.new_findings?.length > 0) {
+            allFindings.push(...chainData.new_findings);
+            addOutput(`🔗 Exploit chains: ${chainData.new_findings.length} new findings from ${chainData.chains_executed?.length || 0} chains`, 'success');
+            chainData.output?.filter((l: string) => l.includes('✅')).forEach((l: string) => addOutput(l, 'success'));
+          }
+        } catch (e: any) {
+          addOutput(`Chain engine error: ${e.message}`, 'warning');
+        }
       }
 
       const verifiedTotal = allFindings.filter(f => f.verified === true).length;
