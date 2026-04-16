@@ -680,6 +680,24 @@ serve(async (req) => {
         });
       }
 
+      case 'execute-exploit-chain': {
+        // AI identifies chain opportunities and auto-executes full chains
+        const { target: chainTarget, findings: chainFindings, techStack: chainTech = [] } = data;
+        const chainResult = await executeExploitChains(chainTarget, chainFindings || [], chainTech, authHeader, supabase, userId);
+        return new Response(JSON.stringify({ success: true, ...chainResult }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      case 'ai-hunt': {
+        // Autonomous AI bug hunter — iterative reasoning loop
+        const { target: huntTarget, instruction, context: huntContext } = data;
+        const huntResult = await aiAutonomousHunt(huntTarget, instruction || '', huntContext || {}, authHeader, supabase, userId);
+        return new Response(JSON.stringify({ success: true, ...huntResult }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
       case 'adaptive-learning': {
         const { execution_result, technique, target_type, context } = data;
         const learningUpdate = await processLearning(execution_result, technique, target_type, context);
