@@ -8,6 +8,41 @@ const corsHeaders = {
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 const AI_GATEWAY_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
+
+// Resilient AI gateway call with exponential backoff. Fixes the false
+// "credits exhausted" UX: a burst of AI calls triggers 429 throttling, NOT a
+// real credit problem. We retry 429/503 with backoff; only a true 402 means
+// credits are actually exhausted.
+async function aiGatewayFetch(init: RequestInit): Promise<Response> {
+  const maxRetries = 4;
+  let lastResp: Response | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const resp = await fetch(AI_GATEWAY_URL, init);
+      if (resp.status === 429 || resp.status === 503) {
+        lastResp = resp;
+        if (attempt < maxRetries) {
+          const wait = Math.min(8000, 500 * Math.pow(2, attempt)) + Math.floor(Math.random() * 400);
+          console.warn(`[AI] ${resp.status} throttled — backoff ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+      }
+      if (resp.status === 402) {
+        console.error('[AI] 402 — workspace AI credits genuinely exhausted');
+      }
+      return resp;
+    } catch (e) {
+      console.warn(`[AI] network error (attempt ${attempt + 1}): ${(e as Error).message}`);
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  return lastResp ?? new Response(JSON.stringify({ error: 'ai_unavailable' }), { status: 503 });
+}
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 
@@ -1107,7 +1142,7 @@ async function aiFalsePositiveFilter(
     .slice(0, 20);
 
   try {
-    const response = await fetch(AI_GATEWAY_URL, {
+    const response = await aiGatewayFetch({
       method: 'POST',
       headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1588,7 +1623,7 @@ async function googleDorkRecon(target: string, authHeader: string): Promise<{ en
   // Use AI to generate additional context-aware dorks
   if (LOVABLE_API_KEY) {
     try {
-      const aiResp = await fetch(AI_GATEWAY_URL, {
+      const aiResp = await aiGatewayFetch({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2235,7 +2270,7 @@ async function correlateFindings(findings: Finding[], context: any): Promise<Cor
 }
 
 async function getAICorrelation(findings: Finding[], context: any): Promise<Correlation | null> {
-  const response = await fetch(AI_GATEWAY_URL, {
+  const response = await aiGatewayFetch({
     method: 'POST',
     headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -2325,7 +2360,7 @@ async function generateAdaptationStrategy(technique: string, targetType: string,
     return { recommended_action: 'try_alternative_technique', alternative_techniques: ['nuclei', 'nikto', 'whatweb'] };
   }
   try {
-    const response = await fetch(AI_GATEWAY_URL, {
+    const response = await aiGatewayFetch({
       method: 'POST',
       headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2422,7 +2457,7 @@ async function generateAgentRecommendations(target: string, currentPhase: string
 async function getPhaseStrategy(phase: string, target: string, objective: string, currentFindings: Finding[]): Promise<any> {
   if (!LOVABLE_API_KEY) return { strategy: 'default', tools: PHASE_SCAN_TYPES[phase] || [] };
   try {
-    const response = await fetch(AI_GATEWAY_URL, {
+    const response = await aiGatewayFetch({
       method: 'POST',
       headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2749,7 +2784,7 @@ async function deepRecursiveScan(
   let aiTestPlan: any = null;
   if (LOVABLE_API_KEY) {
     try {
-      const planResp = await fetch(AI_GATEWAY_URL, {
+      const planResp = await aiGatewayFetch({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3065,7 +3100,7 @@ async function executeExploitChains(
   let aiChainPlan: any = null;
   if (LOVABLE_API_KEY && findings.length >= 2) {
     try {
-      const resp = await fetch(AI_GATEWAY_URL, {
+      const resp = await aiGatewayFetch({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3306,7 +3341,7 @@ async function aiAutonomousHunt(
   let huntPlan: any = null;
   if (LOVABLE_API_KEY) {
     try {
-      const resp = await fetch(AI_GATEWAY_URL, {
+      const resp = await aiGatewayFetch({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3404,7 +3439,7 @@ Return JSON: {"plan": [{"phase": "recon", "action": "description", "tools": ["to
   if (LOVABLE_API_KEY) {
     addThought(`Phase 6: AI iterative reasoning — analyzing results and identifying missed opportunities...`);
     try {
-      const analysisResp = await fetch(AI_GATEWAY_URL, {
+      const analysisResp = await aiGatewayFetch({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
