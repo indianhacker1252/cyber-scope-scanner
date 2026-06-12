@@ -8,6 +8,41 @@ const corsHeaders = {
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 const AI_GATEWAY_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
+
+// Resilient AI gateway call with exponential backoff. Fixes the false
+// "credits exhausted" UX: a burst of AI calls triggers 429 throttling, NOT a
+// real credit problem. We retry 429/503 with backoff; only a true 402 means
+// credits are actually exhausted.
+async function aiGatewayFetch(init: RequestInit): Promise<Response> {
+  const maxRetries = 4;
+  let lastResp: Response | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const resp = await fetch(AI_GATEWAY_URL, init);
+      if (resp.status === 429 || resp.status === 503) {
+        lastResp = resp;
+        if (attempt < maxRetries) {
+          const wait = Math.min(8000, 500 * Math.pow(2, attempt)) + Math.floor(Math.random() * 400);
+          console.warn(`[AI] ${resp.status} throttled — backoff ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+      }
+      if (resp.status === 402) {
+        console.error('[AI] 402 — workspace AI credits genuinely exhausted');
+      }
+      return resp;
+    } catch (e) {
+      console.warn(`[AI] network error (attempt ${attempt + 1}): ${(e as Error).message}`);
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  return lastResp ?? new Response(JSON.stringify({ error: 'ai_unavailable' }), { status: 503 });
+}
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 
