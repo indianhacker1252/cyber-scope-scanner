@@ -1142,7 +1142,7 @@ async function aiFalsePositiveFilter(
     .slice(0, 20);
 
   try {
-    const response = await fetch(AI_GATEWAY_URL, {
+    const response = await aiGatewayFetch({
       method: 'POST',
       headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1623,7 +1623,7 @@ async function googleDorkRecon(target: string, authHeader: string): Promise<{ en
   // Use AI to generate additional context-aware dorks
   if (LOVABLE_API_KEY) {
     try {
-      const aiResp = await fetch(AI_GATEWAY_URL, {
+      const aiResp = await aiGatewayFetch({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2270,7 +2270,7 @@ async function correlateFindings(findings: Finding[], context: any): Promise<Cor
 }
 
 async function getAICorrelation(findings: Finding[], context: any): Promise<Correlation | null> {
-  const response = await fetch(AI_GATEWAY_URL, {
+  const response = await aiGatewayFetch({
     method: 'POST',
     headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -2360,7 +2360,7 @@ async function generateAdaptationStrategy(technique: string, targetType: string,
     return { recommended_action: 'try_alternative_technique', alternative_techniques: ['nuclei', 'nikto', 'whatweb'] };
   }
   try {
-    const response = await fetch(AI_GATEWAY_URL, {
+    const response = await aiGatewayFetch({
       method: 'POST',
       headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2457,7 +2457,7 @@ async function generateAgentRecommendations(target: string, currentPhase: string
 async function getPhaseStrategy(phase: string, target: string, objective: string, currentFindings: Finding[]): Promise<any> {
   if (!LOVABLE_API_KEY) return { strategy: 'default', tools: PHASE_SCAN_TYPES[phase] || [] };
   try {
-    const response = await fetch(AI_GATEWAY_URL, {
+    const response = await aiGatewayFetch({
       method: 'POST',
       headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2784,7 +2784,7 @@ async function deepRecursiveScan(
   let aiTestPlan: any = null;
   if (LOVABLE_API_KEY) {
     try {
-      const planResp = await fetch(AI_GATEWAY_URL, {
+      const planResp = await aiGatewayFetch({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3100,7 +3100,7 @@ async function executeExploitChains(
   let aiChainPlan: any = null;
   if (LOVABLE_API_KEY && findings.length >= 2) {
     try {
-      const resp = await fetch(AI_GATEWAY_URL, {
+      const resp = await aiGatewayFetch({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3341,7 +3341,7 @@ async function aiAutonomousHunt(
   let huntPlan: any = null;
   if (LOVABLE_API_KEY) {
     try {
-      const resp = await fetch(AI_GATEWAY_URL, {
+      const resp = await aiGatewayFetch({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3439,7 +3439,7 @@ Return JSON: {"plan": [{"phase": "recon", "action": "description", "tools": ["to
   if (LOVABLE_API_KEY) {
     addThought(`Phase 6: AI iterative reasoning — analyzing results and identifying missed opportunities...`);
     try {
-      const analysisResp = await fetch(AI_GATEWAY_URL, {
+      const analysisResp = await aiGatewayFetch({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
