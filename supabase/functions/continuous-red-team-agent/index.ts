@@ -751,6 +751,15 @@ serve(async (req) => {
         });
       }
 
+      case 'dns-recon': {
+        // REAL DNS/IP/MX/NS/TXT + crt.sh subdomain enumeration (works fully in edge runtime)
+        const { target: dnsTarget } = data;
+        const dnsResult = await comprehensiveDnsRecon(dnsTarget);
+        return new Response(JSON.stringify({ success: true, ...dnsResult }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
       case 'fine-tune-model': {
         const { training_data, model_type } = data;
         const fineTuningResult = await fineTuneAgentModel(training_data, model_type);
@@ -1685,7 +1694,106 @@ async function enumerateSubdomains(target: string, authHeader: string): Promise<
   }
 }
 
-// ===== Continuous Operation (upgraded with port exploitation + CVE confirmation + AI FP filter) =====
+// ===== REAL DNS / IP / MX / Subdomain Recon (DNS-over-HTTPS + crt.sh) =====
+// Fully functional inside Deno edge runtime — no Kali binary required.
+
+async function dohQuery(name: string, type: string): Promise<any[]> {
+  try {
+    const resp = await fetch(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}`,
+      { headers: { 'accept': 'application/dns-json' } }
+    );
+    if (!resp.ok) return [];
+    const json = await resp.json();
+    return json.Answer || [];
+  } catch {
+    return [];
+  }
+}
+
+async function comprehensiveDnsRecon(target: string): Promise<{
+  domain: string;
+  records: Record<string, string[]>;
+  ips: string[];
+  subdomains: string[];
+  findings: Finding[];
+  output: string[];
+}> {
+  const output: string[] = [];
+  const domain = (target || '').replace(/^https?:\/\//, '').split('/')[0].split(':')[0].trim();
+  const records: Record<string, string[]> = { A: [], AAAA: [], MX: [], NS: [], TXT: [], CNAME: [], SOA: [] };
+  const findings: Finding[] = [];
+
+  // Parallel DNS-over-HTTPS lookups for every record type
+  const types = ['A', 'AAAA', 'MX', 'NS', 'TXT', 'CNAME', 'SOA'];
+  const results = await Promise.all(types.map(t => dohQuery(domain, t)));
+  types.forEach((t, i) => {
+    records[t] = results[i].map((a: any) => String(a.data || '').replace(/"/g, ''));
+  });
+
+  const ips = [...new Set(records.A)];
+  output.push(`[DNS] ${domain} → A: ${ips.join(', ') || 'none'}`);
+  output.push(`[DNS] MX: ${records.MX.join(', ') || 'none'} | NS: ${records.NS.join(', ') || 'none'}`);
+
+  // Email-security misconfig checks from TXT records (real findings)
+  const txt = records.TXT.join(' ').toLowerCase();
+  const hasSPF = txt.includes('v=spf1');
+  const hasDMARC = (await dohQuery(`_dmarc.${domain}`, 'TXT')).some((a: any) => String(a.data).toLowerCase().includes('v=dmarc1'));
+  if (!hasSPF) {
+    findings.push(mkFinding('email-spoof', 'medium', `Missing SPF record on ${domain}`,
+      'No SPF (v=spf1) TXT record found. The domain is vulnerable to email spoofing / phishing from its own name.',
+      { domain, txt: records.TXT }, 'recon', 'dns-recon'));
+    output.push('[DNS] ⚠️ No SPF record — email spoofing possible');
+  }
+  if (!hasDMARC) {
+    findings.push(mkFinding('email-spoof', 'medium', `Missing DMARC record on ${domain}`,
+      'No DMARC policy found at _dmarc subdomain. Spoofed emails will not be rejected/quarantined.',
+      { domain }, 'recon', 'dns-recon'));
+    output.push('[DNS] ⚠️ No DMARC record — spoofed mail not enforced');
+  }
+
+  // crt.sh certificate-transparency subdomain enumeration (real HTTPS API)
+  const subdomains = new Set<string>();
+  try {
+    const crt = await fetch(`https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`, {
+      headers: { 'User-Agent': USER_AGENTS[0] },
+    });
+    if (crt.ok) {
+      const rows = await crt.json();
+      for (const row of rows) {
+        for (const n of String(row.name_value || '').split('\n')) {
+          const sub = n.trim().toLowerCase().replace(/^\*\./, '');
+          if (sub.endsWith(domain) && sub !== domain) subdomains.add(sub);
+        }
+      }
+      output.push(`[CRT.SH] Found ${subdomains.size} subdomains via certificate transparency`);
+    }
+  } catch (e) {
+    output.push(`[CRT.SH] lookup failed: ${(e as Error).message}`);
+  }
+
+  return { domain, records, ips, subdomains: [...subdomains], findings, output };
+}
+
+// Small finding factory to keep recon findings consistent
+function mkFinding(type: string, severity: Finding['severity'], title: string, description: string, raw: any, phase: string, tool: string): Finding {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    severity,
+    title,
+    description,
+    evidence: { raw, target: raw.domain || raw.target },
+    timestamp: new Date().toISOString(),
+    phase,
+    tool_used: tool,
+    exploitable: severity === 'critical' || severity === 'high',
+    confidence: 0.9,
+    verified: true,
+  } as Finding;
+}
+
+
 
 async function executeContinuousOperation(
   state: AgentState, objective: string, config: any, authHeader: string, supabase: any, userId: string
