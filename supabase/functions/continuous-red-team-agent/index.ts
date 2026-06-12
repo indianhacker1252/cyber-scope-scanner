@@ -751,6 +751,15 @@ serve(async (req) => {
         });
       }
 
+      case 'dns-recon': {
+        // REAL DNS/IP/MX/NS/TXT + crt.sh subdomain enumeration (works fully in edge runtime)
+        const { target: dnsTarget } = data;
+        const dnsResult = await comprehensiveDnsRecon(dnsTarget);
+        return new Response(JSON.stringify({ success: true, ...dnsResult }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
       case 'fine-tune-model': {
         const { training_data, model_type } = data;
         const fineTuningResult = await fineTuneAgentModel(training_data, model_type);
