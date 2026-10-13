@@ -1935,9 +1935,45 @@ async function executeContinuousOperation(
   }
 
   // Phase 3: Subdomain Enumeration (NO CAP - scan ALL discovered subdomains)
-  console.log(`[Red Team] Phase 3: Subdomain Enumeration (unlimited)...`);
-  const subdomains = await enumerateSubdomains(state.target, authHeader);
-  const subdomainOutput: string[] = [`[subdomain-scan] Found ${subdomains.length} subdomains: ${subdomains.join(', ')}`];
+  console.log(`[Red Team] Phase 3: Subdomain Enumeration (crt.sh + DNS + MX + scanners)...`);
+  const apex = (state.target || '').replace(/^https?:\/\//, '').split('/')[0].split(':')[0].toLowerCase();
+  const subdomainOutput: string[] = [];
+
+  // (a) Scanner-based enumeration (existing path)
+  const scannerSubs = await enumerateSubdomains(state.target, authHeader);
+
+  // (b) Real DNS + crt.sh enumeration (DNS-over-HTTPS, no Kali needed)
+  const dns = await comprehensiveDnsRecon(apex);
+  allFindings.push(...dns.findings);
+  subdomainOutput.push(...dns.output);
+
+  // (c) MX hosts — only in-scope (same apex) are scanned; out-of-scope mail
+  //     providers are recorded as info findings but NEVER scanned.
+  const mxHosts: string[] = (dns.records.MX || [])
+    .map(r => r.split(/\s+/).pop() || '')
+    .map(h => h.replace(/\.$/, '').toLowerCase())
+    .filter(Boolean);
+  const mxInScope = mxHosts.filter(h => h === apex || h.endsWith('.' + apex));
+  const mxOutOfScope = mxHosts.filter(h => !(h === apex || h.endsWith('.' + apex)));
+  for (const h of mxOutOfScope) {
+    allFindings.push(mkFinding('scope', 'info',
+      `Third-party mail host out of scope: ${h}`,
+      `MX record points to ${h}, which is not a subdomain of ${apex}. Not scanned (authorization limited to in-scope assets).`,
+      { domain: apex, mx_host: h }, 'recon', 'scope-guard'));
+  }
+
+  // Merge, dedupe, and enforce in-scope only (apex or *.apex)
+  const mergedSet = new Set<string>();
+  for (const s of [...scannerSubs, ...dns.subdomains, ...mxInScope]) {
+    const host = s.replace(/^https?:\/\//, '').split('/')[0].split(':')[0].toLowerCase().trim();
+    if (!host) continue;
+    if (host === apex || host.endsWith('.' + apex)) mergedSet.add(host);
+  }
+  const subdomains = [...mergedSet];
+  subdomainOutput.unshift(
+    `[subdomain-scan] In-scope hosts: ${subdomains.length} ` +
+    `(scanner=${scannerSubs.length}, crt.sh/DNS=${dns.subdomains.length}, mx-in-scope=${mxInScope.length}, mx-skipped=${mxOutOfScope.length})`
+  );
 
   if (subdomains.length > 0) {
     // NO LIMIT: scan ALL subdomains (was capped at 5, now unlimited)
